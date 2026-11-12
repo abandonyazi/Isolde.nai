@@ -1,6 +1,5 @@
 const ALLOWED_ORIGINS = new Set([
   "https://abandonyazi.github.io",
-  "https://isolde-nai.de5.net",
 ]);
 
 const ROUTES = new Map([
