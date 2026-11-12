@@ -402,3 +402,31 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   .settings-fold-body.watermark-box,
   .settings-fold-body.export-box{padding:10px 12px 13px}
 }
+
+/* v31: flatten Reference / Vibe inner panels inside settings fold */
+.settings-fold .reference-grid{
+  display:block;
+}
+.settings-fold .reference-panel{
+  border:0;
+  border-radius:0;
+  padding:4px 2px 14px;
+  background:transparent;
+}
+.settings-fold .reference-panel + .reference-panel{
+  margin-top:10px;
+  padding-top:16px;
+  border-top:1px solid var(--line);
+}
+.settings-fold .reference-panel-head{
+  align-items:center;
+}
+.settings-fold .reference-panel-head strong{
+  font-size:15px;
+}
+@media(max-width:560px){
+  .settings-fold .reference-panel{
+    padding-left:0;
+    padding-right:0;
+  }
+}
