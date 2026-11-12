@@ -20,7 +20,8 @@ const els = {
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
@@ -45,6 +46,8 @@ let currentReferenceAsset = null;
 let currentVibeAsset = null;
 let referencePreviewUrl = null;
 let vibePreviewUrl = null;
+let naiInspectPreviewUrl = null;
+let currentNaiInspect = null;
 
 function uid(prefix='id') {
   if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -241,9 +244,10 @@ function applyQualityTags(prompt) {
 }
 function assemblePrompts() {
   const preset = currentPreset();
-  const explicitPlaceholderNames = characterPlaceholderNames(cleanJoin([preset?.positive || '', els.scenePrompt.value]));
+  const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
+  const explicitPlaceholderNames = characterPlaceholderNames(cleanJoin([presetPrompt, els.scenePrompt.value]));
   const anchorText = selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt);
-  const positive = expandCharacterPlaceholders(cleanJoin([preset?.positive || '', ...anchorText, els.scenePrompt.value]));
+  const positive = expandCharacterPlaceholders(cleanJoin([presetPrompt, ...anchorText, els.scenePrompt.value]));
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
   return { positive: applyQualityTags(positive), negative };
 }
@@ -303,6 +307,7 @@ function openPresetEditor(p=null) {
   els.presetDialogTitle.textContent = p ? '编辑预设' : '新增预设';
   els.presetId.value = p?.id || '';
   els.presetName.value = p?.name || '';
+  els.presetArtist.value = p?.artist || '';
   els.presetPositive.value = p?.positive || '';
   els.presetNegative.value = p?.negative || '';
   els.presetDialog.showModal();
@@ -344,6 +349,113 @@ function deleteAnchor(id) {
   if (!a || !confirm(`删除角色「${a.name}」？`)) return;
   anchors=anchors.filter(x=>x.id!==id); selectedAnchorIds=selectedAnchorIds.filter(x=>x!==id);
   saveJson(ANCHORS_KEY,anchors); renderAnchors(); updateAssembly();
+}
+const NAI_PNG_SIGNATURE=[137,80,78,71,13,10,26,10];
+const NAI_META_MAX=4*1024*1024;
+function bytesEqualAt(bytes,values,offset=0){return values.every((value,index)=>bytes[offset+index]===value);}
+function decodeUtf8OrLatin1(bytes){try{return new TextDecoder('utf-8',{fatal:true}).decode(bytes);}catch{return new TextDecoder('iso-8859-1').decode(bytes);}}
+async function inflateNaiMetadata(bytes){
+  if(typeof DecompressionStream==='function'){
+    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('deflate'));
+    const reader=stream.getReader(),chunks=[];let total=0;
+    try{while(true){const part=await reader.read();if(part.done)break;total+=part.value.byteLength;if(total>NAI_META_MAX)throw new Error('压缩 metadata 过大');chunks.push(part.value);}}finally{reader.releaseLock();}
+    const out=new Uint8Array(total);let offset=0;for(const chunk of chunks){out.set(chunk,offset);offset+=chunk.byteLength;}return out;
+  }
+  const mod=await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
+  const out=mod.unzlibSync(bytes);if(out.byteLength>NAI_META_MAX)throw new Error('压缩 metadata 过大');return out;
+}
+async function decodeNaiTextChunk(type,data){
+  const zero=data.indexOf(0);if(zero<=0)return null;
+  const keyword=new TextDecoder('iso-8859-1').decode(data.subarray(0,zero));
+  if(type==='tEXt')return {keyword,text:decodeUtf8OrLatin1(data.subarray(zero+1))};
+  if(type==='zTXt'){if(data[zero+1]!==0)return null;return {keyword,text:decodeUtf8OrLatin1(await inflateNaiMetadata(data.subarray(zero+2)))}}
+  if(type==='iTXt'){
+    if(zero+3>data.length)return null;const compressed=data[zero+1]===1;if(data[zero+2]!==0)return null;
+    const languageEnd=data.indexOf(0,zero+3);if(languageEnd<0)return null;const translatedEnd=data.indexOf(0,languageEnd+1);if(translatedEnd<0)return null;
+    let textBytes=data.subarray(translatedEnd+1);if(compressed)textBytes=await inflateNaiMetadata(textBytes);return {keyword,text:new TextDecoder('utf-8').decode(textBytes)};
+  }
+  return null;
+}
+async function readNaiPngText(file){
+  if(file.size>40*1024*1024)throw new Error('图片太大，请控制在 40MB 以内');
+  const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
+  if(bytes.length<33||!bytesEqualAt(bytes,NAI_PNG_SIGNATURE))throw new Error('请选择 NovelAI 原始 PNG 图片');
+  const view=new DataView(buffer),width=view.getUint32(16,false),height=view.getUint32(20,false),entries=[];let offset=8,count=0,totalText=0;
+  while(offset+12<=bytes.length&&count++<4096){
+    const length=view.getUint32(offset,false),type=new TextDecoder('iso-8859-1').decode(bytes.subarray(offset+4,offset+8)),start=offset+8,end=start+length,next=end+4;
+    if(end<start||next>bytes.length)break;
+    if(['tEXt','zTXt','iTXt'].includes(type)){try{const entry=await decodeNaiTextChunk(type,bytes.subarray(start,end));if(entry){totalText+=entry.text.length;if(totalText<=NAI_META_MAX)entries.push(entry);}}catch{}}
+    offset=next;if(type==='IEND')break;
+  }
+  return {entries,width,height};
+}
+function nestedNaiMetadata(value,source=''){
+  if(!value)return null;
+  if(typeof value==='object'&&!Array.isArray(value)){
+    const comment=value.Comment??value.comment;
+    if(comment&&typeof comment==='object')return {...comment,Source:comment.Source||comment.source||value.Source||value.source||source};
+    if(typeof comment==='string'){const nested=nestedNaiMetadata(comment,value.Source||value.source||source);if(nested)return nested;}
+    if(value.prompt||value.v4_prompt||value.steps||value.sampler||value.uc)return {...value,Source:value.Source||value.source||source};
+    return null;
+  }
+  const text=String(value).trim();if(!text)return null;if(text.startsWith('{')){try{return nestedNaiMetadata(JSON.parse(text),source);}catch{}}return null;
+}
+function naiModelFromMeta(raw){
+  const explicit=String(raw.model||'').trim();if(explicit)return explicit;const source=String(raw.Source||raw.source||'').toLowerCase();
+  if(source.includes('v5')||source.includes('diffusion 5'))return 'nai-diffusion-5-full';
+  if(source.includes('4.5')&&source.includes('curated'))return 'nai-diffusion-4-5-curated';
+  if(source.includes('4.5'))return 'nai-diffusion-4-5-full';
+  if(source.includes('v4')&&source.includes('curated'))return 'nai-diffusion-4-curated-preview';
+  if(source.includes('v4')||source.includes('diffusion 4'))return 'nai-diffusion-4-full';
+  if(source.includes('v3')||source.includes('diffusion 3'))return 'nai-diffusion-3';
+  return raw.Source||raw.source||'';
+}
+function naiPromptText(raw,description=''){return String(raw.prompt||raw.v4_prompt?.caption?.base_caption||description||'').trim();}
+function naiNegativeText(raw){return String(raw.uc||raw.negative_prompt||raw.v4_negative_prompt?.caption?.base_caption||'').trim();}
+function splitPromptTokens(text){
+  const out=[];let buf='',depth=0,quote='';
+  for(const ch of String(text||'')){
+    if(quote){buf+=ch;if(ch===quote)quote='';continue;}
+    if(ch==='"'||ch==="'"){quote=ch;buf+=ch;continue;}
+    if('([{'.includes(ch))depth++;else if(')]}'.includes(ch))depth=Math.max(0,depth-1);
+    if(ch===','&&depth===0){if(buf.trim())out.push(buf.trim());buf='';}else buf+=ch;
+  }
+  if(buf.trim())out.push(buf.trim());return out;
+}
+function splitArtistPrompt(text){
+  const artist=[],positive=[];
+  for(const token of splitPromptTokens(text)){const isArtist=/\bartist\s*:/i.test(token);const isYear=/^(?:\s*[\d.]+\s*::\s*)?year\s+(?:19|20)\d{2}(?:\s*::\s*)?\s*$/i.test(token);(isArtist||isYear?artist:positive).push(token);}
+  return {artist:artist.join(', '),positive:positive.join(', ')};
+}
+function boolLabel(value){return value===true?'开':value===false?'关':'';}
+function normalizedInspectParams(raw,width,height){
+  const vibeCount=Array.isArray(raw.reference_image_multiple)?raw.reference_image_multiple.length:0;
+  const refCount=Array.isArray(raw.director_reference_images)?raw.director_reference_images.length:0;
+  return {model:naiModelFromMeta(raw),width:Number(raw.width)||width||null,height:Number(raw.height)||height||null,seed:raw.seed??null,steps:raw.steps??null,cfg:raw.scale??raw.cfg_scale??null,sampler:raw.sampler??null,noiseSchedule:raw.noise_schedule??null,cfgRescale:raw.cfg_rescale??null,smea:raw.autoSmea??raw.smea??null,dynamicThresholding:raw.dynamic_thresholding??null,qualityToggle:raw.qualityToggle??null,ucPreset:raw.ucPreset??null,vibeCount,referenceCount:refCount,source:String(raw.Source||raw.source||'')};
+}
+function renderInspectParams(params){
+  const entries=[['Model',params.model],['尺寸',params.width&&params.height?String(params.width)+' × '+String(params.height):''],['Seed',params.seed],['Steps',params.steps],['CFG',params.cfg],['Sampler',params.sampler],['Noise',params.noiseSchedule],['CFG Rescale',params.cfgRescale],['SMEA',boolLabel(params.smea)],['Dynamic',boolLabel(params.dynamicThresholding)],['Quality',boolLabel(params.qualityToggle)],['UC Preset',params.ucPreset],['Vibe',params.vibeCount?String(params.vibeCount)+' 个':''],['Reference',params.referenceCount?String(params.referenceCount)+' 个':'']].filter((pair)=>pair[1]!==null&&pair[1]!==undefined&&String(pair[1])!=='');
+  els.naiInspectParams.innerHTML='';
+  for(const pair of entries){const row=document.createElement('div');row.className='inspect-param';const key=document.createElement('span');key.textContent=pair[0];const val=document.createElement('strong');val.textContent=String(pair[1]);row.append(key,val);els.naiInspectParams.appendChild(row);}
+}
+async function inspectNaiImage(file){
+  const data=await readNaiPngText(file),entries=data.entries,sourceEntry=entries.find((entry)=>entry.keyword.toLowerCase()==='source')?.text?.trim()||'',description=entries.find((entry)=>entry.keyword.toLowerCase()==='description')?.text?.trim()||'';
+  let raw=null;
+  for(const key of ['comment','description']){for(const candidate of entries.filter((entry)=>entry.keyword.toLowerCase()===key)){raw=nestedNaiMetadata(candidate.text,sourceEntry);if(raw)break;}if(raw)break;}
+  if(!raw)throw new Error('没有检测到可解析的 NovelAI metadata');
+  const prompt=naiPromptText(raw,description);if(!prompt&&!raw.steps&&!raw.sampler)throw new Error('这张 PNG 没有完整的 NovelAI 生成参数');
+  const split=splitArtistPrompt(prompt);return {file,artist:split.artist,positive:split.positive,negative:naiNegativeText(raw),params:normalizedInspectParams(raw,data.width,data.height)};
+}
+function resetNaiInspector(){
+  currentNaiInspect=null;if(naiInspectPreviewUrl){URL.revokeObjectURL(naiInspectPreviewUrl);naiInspectPreviewUrl=null;}els.naiInspectFile.value='';els.naiInspectPreview.removeAttribute('src');els.naiInspectEmpty.classList.remove('hidden');els.naiInspectResult.classList.add('hidden');els.naiInspectParams.innerHTML='';
+}
+async function handleNaiInspectFile(file){
+  const result=await inspectNaiImage(file);currentNaiInspect=result;if(naiInspectPreviewUrl)URL.revokeObjectURL(naiInspectPreviewUrl);naiInspectPreviewUrl=URL.createObjectURL(file);els.naiInspectPreview.src=naiInspectPreviewUrl;els.naiInspectFileName.textContent=file.name||'NAI 图片';els.naiInspectSource.textContent=result.params.source||result.params.model||'NovelAI';els.naiInspectPresetName.value=(file.name||'NAI 预设').replace(/\.[^.]+$/,'');els.naiInspectArtist.value=result.artist;els.naiInspectPositive.value=result.positive;els.naiInspectNegative.value=result.negative;renderInspectParams(result.params);els.naiInspectEmpty.classList.add('hidden');els.naiInspectResult.classList.remove('hidden');
+}
+function addInspectedPreset(){
+  if(!currentNaiInspect)return;const name=els.naiInspectPresetName.value.trim();if(!name){els.naiInspectPresetName.focus();return;}const id=uid('preset');
+  const item={id,name,artist:els.naiInspectArtist.value.trim(),positive:els.naiInspectPositive.value.trim(),negative:els.naiInspectNegative.value.trim(),naiParams:{...currentNaiInspect.params},importedFrom:'nai-png',updatedAt:Date.now()};
+  presets.unshift(item);saveJson(PRESETS_KEY,presets);settings.presetId=id;renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();els.naiInspectDialog.close();showToast('预设「'+name+'」已加入');
 }
 function ucPresetNoneIndex(model) {
   if (model==='nai-diffusion-4-5-curated') return 3;
@@ -1295,12 +1407,20 @@ els.regenBtn.addEventListener('click',()=>{
 });
 els.newSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();generate({forceSeed:els.seed.value});});
 
+els.inspectNaiBtn?.addEventListener('click',()=>{resetNaiInspector();els.naiInspectDialog.showModal();});
+els.chooseNaiInspectBtn?.addEventListener('click',()=>els.naiInspectFile?.click());
+els.replaceNaiInspectBtn?.addEventListener('click',()=>els.naiInspectFile?.click());
+els.naiInspectFile?.addEventListener('change',async()=>{
+  const file=els.naiInspectFile.files?.[0];if(!file)return;const old=els.chooseNaiInspectBtn.textContent;els.chooseNaiInspectBtn.disabled=true;els.chooseNaiInspectBtn.textContent='解析中…';
+  try{await handleNaiInspectFile(file);}catch(e){console.error(e);showToast((e?.message||'图片解析失败').slice(0,180));}finally{els.chooseNaiInspectBtn.disabled=false;els.chooseNaiInspectBtn.textContent=old;}
+});
+els.addInspectedPresetBtn?.addEventListener('click',addInspectedPreset);
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
 els.savePresetBtn.addEventListener('click',()=>{
   const name=els.presetName.value.trim();if(!name){els.presetName.focus();return;}
   try{
     const id=els.presetId.value||uid('preset');
-    const item={id,name,positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
+    const item={id,name,artist:els.presetArtist.value.trim(),positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
     const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
     saveJson(PRESETS_KEY,presets);settings.presetId=id;els.presetDialog.close();
     renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();showToast('预设已保存');

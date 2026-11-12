@@ -194,7 +194,7 @@
           <h2>画师串与正负面预设</h2>
           <p class="subtle">保存常用画师串、风格正面词和负面词。工作台只需要选名字。</p>
         </div>
-        <button id="addPresetBtn" class="primary-btn" type="button">新增预设</button>
+        <div class="page-head-actions"><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button></div>
       </div>
       <div id="presetList" class="library-list"></div>
     </section>
@@ -415,8 +415,12 @@
         <input id="presetName" required placeholder="例如：透明水彩 / 西幻 CG" />
       </label>
       <label class="field">
-        <span>画师串 / 正面词</span>
-        <textarea id="presetPositive" rows="8" placeholder="artist:..., watercolor, cinematic lighting, ..."></textarea>
+        <span>画师串</span>
+        <textarea id="presetArtist" rows="4" placeholder="artist:..., 1.2::artist:...::, year 2026, ..."></textarea>
+      </label>
+      <label class="field">
+        <span>正面词</span>
+        <textarea id="presetPositive" rows="7" placeholder="watercolor, cinematic lighting, scene, pose, ..."></textarea>
       </label>
       <label class="field">
         <span>负面词</span>
@@ -429,6 +433,31 @@
     </form>
   </dialog>
 
+  <dialog id="naiInspectDialog" class="modal inspect-modal">
+    <div class="modal-panel inspect-panel">
+      <div class="modal-head">
+        <div><p class="kicker">NAI Inspect</p><h2>解析 NAI 图片</h2></div>
+        <button class="icon-btn" type="button" data-close="naiInspectDialog">×</button>
+      </div>
+      <input id="naiInspectFile" class="watermark-file-input" type="file" accept="image/png,.png" />
+      <div id="naiInspectEmpty" class="inspect-upload">
+        <button id="chooseNaiInspectBtn" class="primary-btn" type="button">选择 NAI 原图</button>
+        <p>读取 PNG 里的 NovelAI metadata，只在本机解析。</p>
+      </div>
+      <div id="naiInspectResult" class="inspect-result hidden">
+        <div class="inspect-image-row">
+          <img id="naiInspectPreview" alt="待解析 NAI 图片" />
+          <div><strong id="naiInspectFileName">NAI 图片</strong><span id="naiInspectSource"></span><button id="replaceNaiInspectBtn" class="text-btn" type="button">换一张</button></div>
+        </div>
+        <label class="field"><span>预设名称</span><input id="naiInspectPresetName" placeholder="从文件名自动生成，可修改" /></label>
+        <label class="field"><span>画师串</span><textarea id="naiInspectArtist" rows="5"></textarea></label>
+        <label class="field"><span>正面</span><textarea id="naiInspectPositive" rows="8"></textarea></label>
+        <label class="field"><span>负面</span><textarea id="naiInspectNegative" rows="6"></textarea></label>
+        <div><div class="inspect-section-title">生成参数</div><div id="naiInspectParams" class="inspect-params"></div></div>
+        <div class="settings-actions inspect-actions"><button id="addInspectedPresetBtn" class="primary-btn" type="button">加入预设</button></div>
+      </div>
+    </div>
+  </dialog>
   <dialog id="anchorDialog" class="modal">
     <form id="anchorForm" class="modal-panel">
       <div class="modal-head">
@@ -452,6 +481,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=26"></script>
+  <script type="module" src="./app.js?v=27"></script>
 </body>
 </html>
