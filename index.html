@@ -7,10 +7,22 @@
   <script>
     (() => {
       try {
-        const saved = localStorage.getItem('isolde_nai_theme_v1');
-        const theme = saved === 'dark' || saved === 'light'
-          ? saved
-          : (window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
+        const key = 'isolde_nai_theme_v1';
+        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        let theme = systemTheme;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const saved = JSON.parse(raw);
+            if ((saved?.theme === 'dark' || saved?.theme === 'light') && saved?.systemAtOverride === systemTheme) {
+              theme = saved.theme;
+            } else {
+              localStorage.removeItem(key);
+            }
+          } catch {
+            localStorage.removeItem(key);
+          }
+        }
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.getElementById('themeColorMeta')?.setAttribute('content', theme === 'dark' ? '#111a23' : '#f3f7fb');
@@ -30,7 +42,7 @@
   <main class="app-shell">
     <header class="topbar">
       <div id="miniStatus" class="mini-status">未连接</div>
-      <button id="themeToggle" class="icon-btn theme-toggle" type="button" aria-label="切换夜间模式" title="切换夜间模式">☾</button>
+      <button id="themeToggle" class="icon-btn theme-toggle" type="button" aria-label="切换夜间模式" title="临时切换主题，系统下次切换后恢复跟随">☾</button>
     </header>
 
     <nav class="tabbar" aria-label="主导航">
@@ -499,6 +511,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=33"></script>
+  <script type="module" src="./app.js?v=34"></script>
 </body>
 </html>
