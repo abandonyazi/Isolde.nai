@@ -629,6 +629,7 @@ async function renderVibePresets(selectedKey=''){
 }
 function vibeAssetUsable(asset){
   if(!asset)return false;
+  if(Array.isArray(asset.vibeItems)&&asset.vibeItems.some(vibeAssetUsable))return true;
   if(asset.blob instanceof Blob)return true;
   const buckets=asset.encodings&&typeof asset.encodings==='object'?Object.values(asset.encodings):[];
   return buckets.some(list=>Array.isArray(list)&&list.some(item=>typeof item?.encoding==='string'&&item.encoding.length>64));
@@ -717,7 +718,82 @@ function pushDirectArrayEntries(out,obj,nameBase){
     });
   });
 }
+function indexedVibeItem(raw,overrides={}){
+  if(!raw||typeof raw!=='object')return null;
+  const importInfo=raw.importInfo&&typeof raw.importInfo==='object'?raw.importInfo:{};
+  const encodings=normalizeEncodingBuckets(raw.encodings);
+  const blob=base64ToBlob(raw.image||'');
+  const previewBlob=blob||base64ToBlob(raw.thumbnail||'');
+  const strength=clampNumber(overrides.strength??importInfo.strength??raw.strength,0,1,.6);
+  const information=clampNumber(overrides.information??importInfo.information_extracted??raw.information_extracted??raw.information,.05,1,.7);
+  if(!blob&&!Object.keys(encodings).length)return null;
+  return {
+    name:String(raw.name||overrides.name||'Vibe'),
+    strength,
+    information,
+    encodings,
+    blob,
+    previewBlob
+  };
+}
+function parseIndexedVibeLibrary(doc,fileName='Vibe'){
+  if(!doc||typeof doc!=='object'||Array.isArray(doc))return [];
+  const vibeData=doc.vibeData&&typeof doc.vibeData==='object'?doc.vibeData:null;
+  const groups=doc.groups&&typeof doc.groups==='object'?doc.groups:null;
+  const vibePresets=doc.vibePresets&&typeof doc.vibePresets==='object'?doc.vibePresets:null;
+  if(!vibeData||(!groups&&!vibePresets))return [];
+
+  const out=[];
+  const groupedNames=new Set();
+
+  if(groups){
+    for(const [groupName,group] of Object.entries(groups)){
+      const refs=Array.isArray(group?.vibes)?group.vibes:[];
+      const items=[];
+      for(const ref of refs){
+        const raw=vibeData?.[ref?.vibeDataId];
+        const item=indexedVibeItem(raw,{strength:ref?.strength});
+        if(item)items.push(item);
+      }
+      if(!items.length)continue;
+      groupedNames.add(groupName);
+      const first=items[0];
+      out.push({
+        name:String(groupName||'Vibe 组合'),
+        strength:first.strength,
+        information:first.information,
+        encodings:null,
+        blob:first.blob||null,
+        previewBlob:first.previewBlob||null,
+        vibeItems:items,
+        isGroup:true,
+        fileName
+      });
+    }
+  }
+
+  if(vibePresets){
+    for(const [presetName,preset] of Object.entries(vibePresets)){
+      if(groupedNames.has(presetName))continue;
+      const raw=vibeData?.[preset?.vibeDataId];
+      const item=indexedVibeItem(raw,{
+        strength:preset?.strength,
+        information:preset?.infoExtract,
+        name:presetName
+      });
+      if(!item)continue;
+      out.push({
+        ...item,
+        name:String(presetName||item.name),
+        fileName
+      });
+    }
+  }
+  return out;
+}
 function parseVibeDocument(doc,fileName='Vibe'){
+  const indexed=parseIndexedVibeLibrary(doc,fileName);
+  if(indexed.length)return indexed;
   const base=fileName.replace(/\.(?:json|naiv4vibe|naiv4vibebundle)$/i,'')||'Vibe';
   const out=[];
   const documents=Array.isArray(doc)?doc:(Array.isArray(doc?.vibes)?doc.vibes:[doc]);
@@ -784,6 +860,8 @@ async function importVibeDocumentFile(file){
       strength:entry.strength,
       information:entry.information,
       encodings:entry.encodings,
+      vibeItems:entry.vibeItems||null,
+      isGroup:Boolean(entry.isGroup),
       imported:true,
       updatedAt:Date.now()
     });
@@ -791,7 +869,8 @@ async function importVibeDocumentFile(file){
   }
   await renderVibePresets(keys[0]);
   await applyVibePreset(keys[0]);
-  if(entries.length>1)showToast(`已导入 ${entries.length} 个 Vibe，全部存进预设`);
+  if(entries.length>1)showToast(`已导入 ${entries.length} 个 Vibe 预设`);
+  else if(entries[0]?.isGroup)showToast(`组合 Vibe「${entries[0].name}」已导入 · ${entries[0].vibeItems?.length||0} 个子 Vibe`);
   else showToast('Vibe 文件已导入');
 }
 async function saveCurrentVibePreset(){
@@ -809,6 +888,8 @@ async function saveCurrentVibePreset(){
     blob:asset.blob||null,
     previewBlob:asset.previewBlob||null,
     encodings:asset.encodings||null,
+    vibeItems:asset.vibeItems||null,
+    isGroup:Boolean(asset.isGroup),
     fileName:asset.name||asset.fileName||'vibe',
     type:asset.type||asset.blob?.type||'',
     strength:clampNumber(els.vibeStrength.value,0,1,.6),
@@ -827,7 +908,9 @@ async function applyVibePreset(key){
     blob:preset.blob||null,
     previewBlob:preset.previewBlob||null,
     encodings:preset.encodings||null,
-    name:preset.fileName||preset.name||'vibe',
+    vibeItems:preset.vibeItems||null,
+    isGroup:Boolean(preset.isGroup),
+    name:preset.name||preset.fileName||'vibe',
     type:preset.type||preset.blob?.type||'',
     updatedAt:Date.now()
   });
@@ -875,7 +958,8 @@ async function refreshReferenceUi(){
   const hasVibe=vibeAssetUsable(currentVibeAsset);
   els.removeVibeBtn.disabled=!hasVibe;
   if(hasVibe){
-    const preview=currentVibeAsset.blob||currentVibeAsset.previewBlob||null;
+    const firstItem=Array.isArray(currentVibeAsset.vibeItems)?currentVibeAsset.vibeItems[0]:null;
+    const preview=currentVibeAsset.blob||currentVibeAsset.previewBlob||firstItem?.blob||firstItem?.previewBlob||null;
     if(preview){
       vibePreviewUrl=URL.createObjectURL(preview);
       els.vibePreview.src=vibePreviewUrl;
@@ -883,7 +967,10 @@ async function refreshReferenceUi(){
       els.vibePreview.removeAttribute('src');
     }
     els.vibePreview.style.display=preview?'block':'none';
-    els.vibeStatus.textContent=currentVibeAsset.name||'已导入 Vibe 编码';
+    const count=Array.isArray(currentVibeAsset.vibeItems)?currentVibeAsset.vibeItems.length:0;
+    els.vibeStatus.textContent=count>1
+      ? `${currentVibeAsset.name||'组合 Vibe'} · ${count} 个 Vibe · 使用各自参数`
+      : (currentVibeAsset.name||'已导入 Vibe 编码');
     els.vibePreviewWrap.classList.remove('hidden');
   }else{
     els.vibePreview.removeAttribute('src');
@@ -892,6 +979,11 @@ async function refreshReferenceUi(){
     els.vibePreviewWrap.classList.add('hidden');
     els.vibeEnabled.checked=false;
   }
+  const grouped=Boolean(hasVibe&&Array.isArray(currentVibeAsset?.vibeItems)&&currentVibeAsset.vibeItems.length>1);
+  els.vibeStrength.disabled=grouped;
+  els.vibeInformation.disabled=grouped;
+  els.vibeStrength.title=grouped?'组合预设使用每个 Vibe 自己的 Strength':'';
+  els.vibeInformation.title=grouped?'组合预设使用每个 Vibe 自己的 Information':'';
   updateReferenceModelHint();
 }
 function updateReferenceModelHint(){
@@ -1003,15 +1095,31 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
     const asset=currentVibeAsset||await getLocalAsset('vibe');
     if(!vibeAssetUsable(asset))throw new Error('先添加或导入一个 Vibe');
     const base=naiFetchBase(endpoint);
-    const info=clampNumber(els.vibeInformation.value,.05,1,.7);
-    let encoded=vibeEncodingFor(asset,naiBody.model,info);
-    if(!encoded){
-      if(!asset.blob)throw new Error('这个 Vibe 文件没有当前 Information 档位的编码，也没有原图可重新编码');
-      encoded=await encodedVibeFor(asset.blob,naiBody.model,info,base,key);
+    const items=Array.isArray(asset.vibeItems)&&asset.vibeItems.length?asset.vibeItems:[asset];
+    const encodings=[];
+    const strengths=[];
+    const informations=[];
+
+    for(const item of items){
+      const info=items.length>1
+        ? clampNumber(item.information,.05,1,.7)
+        : clampNumber(els.vibeInformation.value,.05,1,.7);
+      const strength=items.length>1
+        ? clampNumber(item.strength,0,1,.6)
+        : clampNumber(els.vibeStrength.value,0,1,.6);
+      let encoded=vibeEncodingFor(item,naiBody.model,info);
+      if(!encoded){
+        if(!item.blob)throw new Error(`Vibe「${item.name||'未命名'}」没有当前模型 / Information 的编码，也没有原图可重新编码`);
+        encoded=await encodedVibeFor(item.blob,naiBody.model,info,base,key);
+      }
+      encodings.push(encoded);
+      strengths.push(strength);
+      informations.push(info);
     }
-    naiBody.parameters.reference_image_multiple=[encoded];
-    naiBody.parameters.reference_strength_multiple=[clampNumber(els.vibeStrength.value,0,1,.6)];
-    naiBody.parameters.reference_information_extracted_multiple=[info];
+
+    naiBody.parameters.reference_image_multiple=encodings;
+    naiBody.parameters.reference_strength_multiple=strengths;
+    naiBody.parameters.reference_information_extracted_multiple=informations;
     naiBody.parameters.normalize_reference_strength_multiple=true;
   }
   return naiBody;
