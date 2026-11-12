@@ -5,7 +5,7 @@ const SETTINGS_KEY = 'isolde_nai_settings_v2';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
 const DB_NAME = 'isolde-nai-gallery';
-const DB_VERSION = 2;
+const DB_VERSION = 3;
 
 const els = {
   tabs: [...document.querySelectorAll('.tab')],
@@ -24,6 +24,7 @@ const els = {
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
+  watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   toast: $('toast')
 };
 
@@ -36,6 +37,8 @@ let currentResultBlob = null;
 let currentSeed = '';
 let busy = false;
 let toastTimer = null;
+let currentWatermarkAsset = null;
+let watermarkPreviewUrl = null;
 
 function uid(prefix='id') {
   if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -431,70 +434,48 @@ function loadCanvasImage(src){
     image.src=src;
   });
 }
-function drawWatermarkPaw(ctx,x,y,size){
-  ctx.save(); ctx.translate(x,y);
-  ctx.fillStyle='rgba(230,145,174,.86)';
-  ctx.strokeStyle='rgba(255,255,255,.72)';
-  ctx.lineWidth=Math.max(1,size*.022);
-  const dot=(dx,dy,r)=>{ctx.beginPath();ctx.arc(dx,dy,r,0,Math.PI*2);ctx.fill();ctx.stroke();};
-  dot(0,size*.12,size*.22); dot(-size*.28,-size*.12,size*.1); dot(-size*.1,-size*.26,size*.1); dot(size*.12,-size*.25,size*.1); dot(size*.3,-size*.08,size*.1);
-  ctx.restore();
-}
-async function addIsoldeWatermark(source){
+async function addCustomWatermark(source){
+  const asset=currentWatermarkAsset||await getWatermarkAsset();
+  if(!asset?.blob) throw new Error('先在设置里上传水印');
   const sourceUrl=URL.createObjectURL(source);
+  const watermarkUrl=URL.createObjectURL(asset.blob);
   try{
-    const [image,badge]=await Promise.all([loadCanvasImage(sourceUrl),loadCanvasImage('./isolde-watermark.svg?v=12')]);
+    const [image,mark]=await Promise.all([loadCanvasImage(sourceUrl),loadCanvasImage(watermarkUrl)]);
     const canvas=document.createElement('canvas');
-    canvas.width=image.naturalWidth; canvas.height=image.naturalHeight;
+    canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
     const ctx=canvas.getContext('2d');
-    if(!ctx) throw new Error('浏览器无法生成水印');
+    if(!ctx) throw new Error('浏览器无法生成水印版');
     ctx.drawImage(image,0,0);
+
     const w=canvas.width,h=canvas.height,short=Math.max(1,Math.min(w,h));
-    const paw=Math.max(18,short*.045),stepX=Math.max(120,short*.27),stepY=Math.max(105,short*.23),fontSize=Math.max(13,short*.024),latticeStep=Math.max(120,short*.24);
+    const ratio=mark.naturalWidth/Math.max(1,mark.naturalHeight);
+    let markW=Math.max(72,short*.22);
+    let markH=markW/Math.max(.05,ratio);
+    const maxH=short*.18;
+    if(markH>maxH){markH=maxH;markW=markH*ratio;}
+    const stepX=Math.max(markW*1.9,short*.34);
+    const stepY=Math.max(markH*2.3,short*.26);
 
     ctx.save();
-    ctx.globalAlpha=.11;
-    ctx.strokeStyle='rgba(226,146,173,.92)';
-    ctx.lineWidth=Math.max(1,short*.0016);
-    ctx.setLineDash([Math.max(3,short*.005),Math.max(6,short*.009)]);
-    for(let offset=-h;offset<w+h;offset+=latticeStep){
-      ctx.beginPath();ctx.moveTo(offset,0);ctx.lineTo(offset+h,h);ctx.stroke();
-      ctx.beginPath();ctx.moveTo(offset,0);ctx.lineTo(offset-h,h);ctx.stroke();
-    }
-    ctx.restore();
-
-    ctx.save();
-    ctx.translate(w/2,h/2); ctx.rotate(-Math.PI/12); ctx.translate(-w/2,-h/2);
-    ctx.globalAlpha=.14;
-    ctx.font=`700 ${fontSize}px "Brush Script MT","Segoe Script",cursive`;
-    ctx.textBaseline='middle';
-    ctx.fillStyle='rgba(225,137,168,.98)';
-    ctx.strokeStyle='rgba(255,255,255,.72)';
-    ctx.lineWidth=Math.max(1,fontSize*.07);
-    for(let y=-stepY*2,row=0;y<h+stepY*2;y+=stepY,row++){
-      for(let x=-stepX*2+(row%2?stepX/2:0);x<w+stepX*2;x+=stepX){
-        drawWatermarkPaw(ctx,x,y,paw);
-        const tx=x+paw*.62;
-        ctx.strokeText('by Isolde',tx,y+paw*.05);
-        ctx.fillText('by Isolde',tx,y+paw*.05);
+    ctx.globalAlpha=.22;
+    ctx.translate(w/2,h/2);
+    ctx.rotate(-Math.PI/12);
+    ctx.translate(-w/2,-h/2);
+    for(let row=0,y=-stepY*2;y<h+stepY*2;y+=stepY,row++){
+      for(let x=-stepX*2+(row%2?stepX*.5:0);x<w+stepX*2;x+=stepX){
+        ctx.drawImage(mark,x,y,markW,markH);
       }
     }
     ctx.restore();
 
-    const badgeWidth=Math.min(short*.15,180);
-    const badgeHeight=badgeWidth*(badge.naturalHeight/Math.max(1,badge.naturalWidth));
-    const margin=Math.max(12,short*.022);
-    ctx.save(); ctx.globalAlpha=.50;
-    ctx.drawImage(badge,w-badgeWidth-margin,h-badgeHeight-margin,badgeWidth,badgeHeight);
-    ctx.restore();
-
-    return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('水印导出失败')),'image/png'));
+    return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('水印版导出失败')),'image/png'));
   }finally{
     URL.revokeObjectURL(sourceUrl);
+    URL.revokeObjectURL(watermarkUrl);
   }
 }
 async function saveWatermarkedBlob(blob,name){
-  const watermarked=await addIsoldeWatermark(blob);
+  const watermarked=await addCustomWatermark(blob);
   saveBlob(watermarked,name);
 }
 async function testConnection(){
@@ -515,9 +496,58 @@ async function testConnection(){
 function openDb(){
   return new Promise((resolve,reject)=>{
     const req=indexedDB.open(DB_NAME,DB_VERSION);
-    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('history')) db.createObjectStore('history',{keyPath:'id',autoIncrement:true});};
+    req.onupgradeneeded=()=>{
+      const db=req.result;
+      if(!db.objectStoreNames.contains('history')) db.createObjectStore('history',{keyPath:'id',autoIncrement:true});
+      if(!db.objectStoreNames.contains('assets')) db.createObjectStore('assets',{keyPath:'key'});
+    };
     req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
   });
+}
+async function getWatermarkAsset(){
+  const db=await openDb();
+  const item=await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readonly');
+    const req=tx.objectStore('assets').get('watermark');
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+  });
+  db.close();
+  return item;
+}
+async function saveWatermarkAsset(file){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readwrite');
+    tx.objectStore('assets').put({key:'watermark',blob:file,name:file.name||'watermark',type:file.type||'',updatedAt:Date.now()});
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function deleteWatermarkAsset(){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readwrite');
+    tx.objectStore('assets').delete('watermark');
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function refreshWatermarkUi(){
+  currentWatermarkAsset=await getWatermarkAsset();
+  if(watermarkPreviewUrl){URL.revokeObjectURL(watermarkPreviewUrl);watermarkPreviewUrl=null;}
+  const has=Boolean(currentWatermarkAsset?.blob);
+  els.removeWatermarkBtn.disabled=!has;
+  if(has){
+    watermarkPreviewUrl=URL.createObjectURL(currentWatermarkAsset.blob);
+    els.watermarkPreview.src=watermarkPreviewUrl;
+    els.watermarkStatus.textContent=currentWatermarkAsset.name||'已设置自定义水印';
+    els.watermarkPreviewWrap.classList.remove('hidden');
+  }else{
+    els.watermarkPreview.removeAttribute('src');
+    els.watermarkStatus.textContent='';
+    els.watermarkPreviewWrap.classList.add('hidden');
+  }
 }
 async function addGallery(blob,meta){
   const db=await openDb();
@@ -552,7 +582,7 @@ async function renderGallery(){
       const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);ib.addEventListener('click',()=>applyGalleryMeta(item));card.appendChild(ib);
       const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
       const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
-      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-by-isolde.png`:`nai-${item.id}-by-isolde.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
     }
   }catch(e){console.warn(e);showToast('图库读取失败');}
 }
@@ -650,7 +680,16 @@ els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els
 els.randomSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();saveSettings();});
 els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
 els.generateBtn.addEventListener('click',()=>generate());
-els.saveWatermarkedBtn?.addEventListener('click',async()=>{if(!currentResultBlob){showToast('还没有可保存的图片');return;}const old=els.saveWatermarkedBtn.textContent;els.saveWatermarkedBtn.disabled=true;els.saveWatermarkedBtn.textContent='加水印中…';try{await saveWatermarkedBlob(currentResultBlob,currentSeed?`nai-${currentSeed}-by-isolde.png`:`nai-${Date.now()}-by-isolde.png`);}catch(e){showToast(e?.message||'水印版生成失败');}finally{els.saveWatermarkedBtn.disabled=false;els.saveWatermarkedBtn.textContent=old;}});
+els.saveWatermarkedBtn?.addEventListener('click',async()=>{
+  if(!currentResultBlob){showToast('还没有可保存的图片');return;}
+  if(!currentWatermarkAsset?.blob){showToast('先在设置里上传水印');return;}
+  const old=els.saveWatermarkedBtn.textContent;
+  els.saveWatermarkedBtn.disabled=true;
+  els.saveWatermarkedBtn.textContent='加水印中…';
+  try{await saveWatermarkedBlob(currentResultBlob,currentSeed?`nai-${currentSeed}-watermarked.png`:`nai-${Date.now()}-watermarked.png`);}
+  catch(e){showToast(e?.message||'水印版生成失败');}
+  finally{els.saveWatermarkedBtn.disabled=false;els.saveWatermarkedBtn.textContent=old;}
+});
 els.regenBtn.addEventListener('click',()=>{
   const seed = currentSeed || els.seed.value.trim();
   if(!seed){ showToast('当前没有固定 Seed'); return; }
@@ -691,6 +730,35 @@ els.saveSettingsBtn.addEventListener('click',()=>{
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
 els.exportGalleryZipBtn?.addEventListener('click',exportGalleryZip);
+els.uploadWatermarkBtn?.addEventListener('click',()=>els.watermarkFile?.click());
+els.watermarkFile?.addEventListener('change',async()=>{
+  const file=els.watermarkFile.files?.[0];
+  if(!file)return;
+  const allowed=new Set(['image/png','image/jpeg','image/webp','image/svg+xml']);
+  if(!allowed.has(file.type)){showToast('请选择 PNG、JPG、WebP 或 SVG 水印');els.watermarkFile.value='';return;}
+  if(file.size>10*1024*1024){showToast('水印文件请控制在 10MB 以内');els.watermarkFile.value='';return;}
+  try{
+    await saveWatermarkAsset(file);
+    await refreshWatermarkUi();
+    showToast('水印已保存到这台设备');
+  }catch(e){
+    console.error(e);
+    showToast('水印保存失败');
+  }finally{
+    els.watermarkFile.value='';
+  }
+});
+els.removeWatermarkBtn?.addEventListener('click',async()=>{
+  try{
+    await deleteWatermarkAsset();
+    await refreshWatermarkUi();
+    showToast('水印已移除');
+  }catch(e){
+    console.error(e);
+    showToast('移除水印失败');
+  }
+});
 
 loadState();
+refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
