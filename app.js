@@ -1,5 +1,6 @@
 const $ = (id) => document.getElementById(id);
 const OFFICIAL_BASE = 'https://image.novelai.net';
+const NAI_PROXY_BASE = 'https://isolde-nai-proxy.abandonyazi.workers.dev';
 const SETTINGS_KEY = 'isolde_nai_settings_v2';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
@@ -83,12 +84,12 @@ function isOfficialBase(base) {
 }
 function naiFetchBase(raw) {
   const base = normalizeBase(raw);
-  return isOfficialBase(base) ? `${location.origin}/nai-api` : base;
+  return isOfficialBase(base) ? NAI_PROXY_BASE : base;
 }
 function updateEndpointUi() {
   if (els.apiFormat.value === 'nai') {
     if (!els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
-    els.endpointHint.textContent = 'NAI 官方当前基址。保持默认时会经你自己的站点安全转发，Safari 不会被 CORS 卡住。';
+    els.endpointHint.textContent = 'NAI 官方当前基址。保持默认时会经 Isolde NAI 的 Cloudflare Worker 安全转发，Safari 不会被 CORS 卡住。';
   } else {
     els.endpointHint.textContent = '可填根地址、/v1，或完整 /v1/chat/completions。';
   }
