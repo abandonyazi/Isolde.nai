@@ -447,25 +447,10 @@ async function addCustomWatermark(source){
     if(!ctx) throw new Error('浏览器无法生成水印版');
     ctx.drawImage(image,0,0);
 
-    const w=canvas.width,h=canvas.height,short=Math.max(1,Math.min(w,h));
-    const ratio=mark.naturalWidth/Math.max(1,mark.naturalHeight);
-    let markW=Math.max(72,short*.22);
-    let markH=markW/Math.max(.05,ratio);
-    const maxH=short*.18;
-    if(markH>maxH){markH=maxH;markW=markH*ratio;}
-    const stepX=Math.max(markW*1.9,short*.34);
-    const stepY=Math.max(markH*2.3,short*.26);
-
+    const w=canvas.width,h=canvas.height;
     ctx.save();
-    ctx.globalAlpha=.22;
-    ctx.translate(w/2,h/2);
-    ctx.rotate(-Math.PI/12);
-    ctx.translate(-w/2,-h/2);
-    for(let row=0,y=-stepY*2;y<h+stepY*2;y+=stepY,row++){
-      for(let x=-stepX*2+(row%2?stepX*.5:0);x<w+stepX*2;x+=stepX){
-        ctx.drawImage(mark,x,y,markW,markH);
-      }
-    }
+    ctx.globalAlpha=1;
+    ctx.drawImage(mark,0,0,w,h);
     ctx.restore();
 
     return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('水印版导出失败')),'image/png'));
