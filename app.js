@@ -68,6 +68,15 @@ function persistTokenIfRemembered() {
 function clearSavedToken() {
   localStorage.removeItem(TOKEN_KEY);
 }
+function rehydrateConnectionFields() {
+  if (els.apiFormat.value === 'nai' && !els.endpoint.value.trim()) {
+    els.endpoint.value = settings.endpoint || OFFICIAL_BASE;
+  }
+  if (els.rememberKey.checked && !els.apiKey.value.trim()) {
+    const savedToken = loadSavedToken();
+    if (savedToken) els.apiKey.value = savedToken;
+  }
+}
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add('show');
@@ -534,8 +543,10 @@ function parseOpenAiImage(text) {
 }
 async function generate({forceSeed=null}={}) {
   if(busy) return;
-  const key=els.apiKey.value.trim();
+  rehydrateConnectionFields();
+  const key=els.apiKey.value.trim() || loadSavedToken();
   if(!key){ goView('settings'); showToast('先填 Token'); return; }
+  if(!els.apiKey.value.trim()) els.apiKey.value=key;
   persistTokenIfRemembered();
   if(!assemblePrompts().positive.trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); return; }
   let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);return;}
@@ -628,7 +639,9 @@ async function saveWatermarkedBlob(blob,name){
 async function testConnection(){
   els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
   try{
-    const key=els.apiKey.value.trim(); if(!key) throw new Error('先填写 Token');
+    rehydrateConnectionFields();
+    const key=els.apiKey.value.trim() || loadSavedToken(); if(!key) throw new Error('先填写 Token');
+    if(!els.apiKey.value.trim()) els.apiKey.value=key;
     persistTokenIfRemembered();
     if(els.apiFormat.value==='nai'){
       const base=naiFetchBase(els.endpoint.value);
@@ -1474,7 +1487,7 @@ els.rememberKey.addEventListener('change',()=>{
 });
 els.testBtn.addEventListener('click',testConnection);
 els.saveSettingsBtn.addEventListener('click',()=>{
-  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');persistTokenIfRemembered();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
+  try{rehydrateConnectionFields();normalizedEndpoint(els.apiFormat.value,els.endpoint.value);const key=els.apiKey.value.trim()||loadSavedToken();if(!key)throw new Error('Token 还是空的');if(!els.apiKey.value.trim())els.apiKey.value=key;persistTokenIfRemembered();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
   catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
@@ -1601,6 +1614,16 @@ els.watermarkOpacity?.addEventListener('input',()=>{
 els.watermarkOpacity?.addEventListener('change',saveSettings);
 
 loadState();
+window.addEventListener('pageshow',()=>{
+  requestAnimationFrame(()=>{
+    rehydrateConnectionFields();
+    setTimeout(rehydrateConnectionFields,250);
+  });
+});
+window.addEventListener('focus',()=>setTimeout(rehydrateConnectionFields,0));
+document.addEventListener('visibilitychange',()=>{
+  if(!document.hidden) setTimeout(rehydrateConnectionFields,0);
+});
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
 renderVibePresets().catch(e=>console.warn('Vibe 预设读取失败',e));
