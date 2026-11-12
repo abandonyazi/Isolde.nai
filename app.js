@@ -61,13 +61,12 @@ function saveJson(key, value) { localStorage.setItem(key, JSON.stringify(value))
 function loadSavedToken() {
   return String(localStorage.getItem(TOKEN_KEY) || '').trim();
 }
-function saveTokenPreference() {
+function persistTokenIfRemembered() {
   const token = els.apiKey.value.trim();
-  if (els.rememberKey.checked) {
-    if (token) localStorage.setItem(TOKEN_KEY, token);
-  } else {
-    localStorage.removeItem(TOKEN_KEY);
-  }
+  if (els.rememberKey.checked && token) localStorage.setItem(TOKEN_KEY, token);
+}
+function clearSavedToken() {
+  localStorage.removeItem(TOKEN_KEY);
 }
 function showToast(message) {
   els.toast.textContent = message;
@@ -537,6 +536,7 @@ async function generate({forceSeed=null}={}) {
   if(busy) return;
   const key=els.apiKey.value.trim();
   if(!key){ goView('settings'); showToast('先填 Token'); return; }
+  persistTokenIfRemembered();
   if(!assemblePrompts().positive.trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); return; }
   let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);return;}
   const seed = forceSeed !== null ? String(forceSeed).trim() : els.seed.value.trim();
@@ -629,6 +629,7 @@ async function testConnection(){
   els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
   try{
     const key=els.apiKey.value.trim(); if(!key) throw new Error('先填写 Token');
+    persistTokenIfRemembered();
     if(els.apiFormat.value==='nai'){
       const base=naiFetchBase(els.endpoint.value);
       const r=await fetch(`${base}/user/subscription`,{headers:{Authorization:`Bearer ${key}`}});
@@ -1460,9 +1461,20 @@ document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',
 
 els.apiFormat.addEventListener('change',()=>{updateEndpointUi();saveSettings();});
 els.toggleKeyBtn.addEventListener('click',()=>{const hidden=els.apiKey.type==='password';els.apiKey.type=hidden?'text':'password';els.toggleKeyBtn.textContent=hidden?'隐藏':'显示';});
+let tokenSaveTimer=null;
+els.apiKey.addEventListener('input',()=>{
+  clearTimeout(tokenSaveTimer);
+  tokenSaveTimer=setTimeout(persistTokenIfRemembered,250);
+});
+els.apiKey.addEventListener('change',persistTokenIfRemembered);
+els.rememberKey.addEventListener('change',()=>{
+  if(els.rememberKey.checked) persistTokenIfRemembered();
+  else clearSavedToken();
+  saveSettings();
+});
 els.testBtn.addEventListener('click',testConnection);
 els.saveSettingsBtn.addEventListener('click',()=>{
-  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');saveTokenPreference();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
+  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');persistTokenIfRemembered();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
   catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
