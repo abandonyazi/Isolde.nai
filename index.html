@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <meta name="theme-color" content="#f3f7fb" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <meta name="apple-mobile-web-app-title" content="Isolde NAI" />
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="icon" href="./icon.svg?v=15" />
+  <link rel="apple-touch-icon" href="./icon.svg?v=15" />
+  <link rel="stylesheet" href="./app.css?v=12" />
+  <title>Isolde NAI</title>
+</head>
+<body>
+  <main class="app-shell">
+    <header class="topbar">
+      <div>
+        <p class="eyebrow">NovelAI · iOS workbench</p>
+        <h1>Isolde NAI</h1>
+      </div>
+      <div id="miniStatus" class="mini-status">未连接</div>
+    </header>
+
+    <nav class="tabbar" aria-label="主导航">
+      <button class="tab active" data-view="workbench">工作台</button>
+      <button class="tab" data-view="presets">预设</button>
+      <button class="tab" data-view="anchors">角色</button>
+      <button class="tab" data-view="gallery">图库</button>
+      <button class="tab" data-view="settings">设置</button>
+    </nav>
+
+    <section id="view-workbench" class="view active">
+      <section id="connectionBanner" class="connection-banner">
+        <span class="dot"></span>
+        <span id="connectionText">NAI 官网 · 等待 Token</span>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <p class="kicker">Prompt</p>
+            <h2>绘图工作台</h2>
+          </div>
+          <button id="clearWorkbenchBtn" class="text-btn" type="button">清空画面词</button>
+        </div>
+
+        <label class="field">
+          <span>画师串 / 正负面预设</span>
+          <select id="presetSelect"></select>
+        </label>
+
+        <div class="field">
+          <div class="field-head">
+            <span>角色锚点</span>
+            <button id="jumpAnchorsBtn" class="text-btn compact" type="button">管理</button>
+          </div>
+          <div id="anchorPicker" class="chip-picker"></div>
+        </div>
+
+        <label class="field">
+          <span>画面词</span>
+          <textarea id="scenePrompt" rows="8" placeholder="只写这张图的构图、动作、表情、服装、背景……；可写 [角色名] 自动注入已保存的角色锚点词"></textarea>
+        </label>
+
+        <label class="field">
+          <span>额外负面</span>
+          <textarea id="extraNegative" rows="3" placeholder="只补这张图额外需要排除的内容"></textarea>
+        </label>
+
+        <details class="details">
+          <summary>提示词拼接与质量词</summary>
+          <div class="details-body">
+            <label class="field">
+              <span>质量词</span>
+              <input id="qualityTags" value="masterpiece, best quality, very aesthetic" />
+            </label>
+            <div class="split">
+              <label class="field">
+                <span>质量词位置</span>
+                <select id="qualityPosition">
+                  <option value="prefix">前置</option>
+                  <option value="suffix">后置</option>
+                  <option value="off">关闭</option>
+                </select>
+              </label>
+              <label class="switch-row">
+                <input id="protectTextBlock" type="checkbox" checked />
+                <span>保护 TEXT: 区块</span>
+              </label>
+            </div>
+            <label class="field">
+              <span>最终正面预览</span>
+              <textarea id="assembledPrompt" rows="6" readonly></textarea>
+            </label>
+            <label class="field">
+              <span>最终负面预览</span>
+              <textarea id="assembledNegative" rows="4" readonly></textarea>
+            </label>
+          </div>
+        </details>
+      </section>
+
+      <section class="card">
+        <div class="section-head">
+          <div>
+            <p class="kicker">Canvas</p>
+            <h2>画幅与基础设置</h2>
+          </div>
+          <button id="randomSeedBtn" class="chip" type="button">随机 Seed</button>
+        </div>
+
+        <label class="field">
+          <span>画幅</span>
+          <select id="aspect">
+            <option value="1024x1024">1:1 · 1024 × 1024</option>
+            <option value="832x1216">竖图 · 832 × 1216</option>
+            <option value="1216x832">横图 · 1216 × 832</option>
+            <option value="704x1248">9:16 · 704 × 1248</option>
+            <option value="1248x704">16:9 · 1248 × 704</option>
+            <option value="custom">自定义</option>
+          </select>
+        </label>
+
+        <div class="grid two">
+          <label class="field">
+            <span>模型</span>
+            <select id="model">
+              <option value="nai-diffusion-5-full">NAI 5.0 Full</option>
+              <option value="nai-diffusion-5-full-medium">NAI 5.0 Full Medium</option>
+              <option value="nai-diffusion-5-curated">NAI 5.0 Curated</option>
+              <option value="nai-diffusion-4-5-full">NAI 4.5 Full</option>
+              <option value="nai-diffusion-4-5-curated">NAI 4.5 Curated</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>采样器</span>
+            <select id="sampler">
+              <option value="k_euler_ancestral">Euler Ancestral</option>
+              <option value="k_euler">Euler</option>
+              <option value="k_dpmpp_2s_ancestral">DPM++ 2S A</option>
+              <option value="k_dpmpp_2m_sde">DPM++ 2M SDE</option>
+              <option value="k_dpmpp_2m">DPM++ 2M</option>
+              <option value="k_dpmpp_sde">DPM++ SDE</option>
+            </select>
+          </label>
+          <label class="field">
+            <span>宽度</span>
+            <input id="width" type="number" min="256" max="2048" step="64" value="1024" />
+          </label>
+          <label class="field">
+            <span>高度</span>
+            <input id="height" type="number" min="256" max="2048" step="64" value="1024" />
+          </label>
+          <label class="field">
+            <span>Steps</span>
+            <input id="steps" type="number" min="1" max="50" value="28" />
+          </label>
+          <label class="field">
+            <span>CFG</span>
+            <input id="cfg" type="number" min="0" max="20" step="0.1" value="5" />
+          </label>
+        </div>
+
+        <label class="field">
+          <span>Seed</span>
+          <input id="seed" inputmode="numeric" placeholder="留空 = 随机" />
+        </label>
+      </section>
+
+      <section class="result-area">
+        <div id="emptyResult" class="empty-result">
+          <div class="empty-orb">✦</div>
+          <p>生成结果会出现在这里</p>
+        </div>
+        <div id="resultWrap" class="result-wrap hidden">
+          <img id="resultImage" alt="最新生成图片" />
+          <div class="result-actions">
+            <a id="saveLink" class="secondary-btn" download="nai-image.png">保存原图</a>
+            <button id="saveWatermarkedBtn" class="secondary-btn" type="button">保存水印版</button>
+            <button id="regenBtn" class="secondary-btn" type="button">同 Seed 重生</button>
+            <button id="newSeedBtn" class="secondary-btn" type="button">换 Seed</button>
+          </div>
+        </div>
+      </section>
+
+      <button id="generateBtn" class="generate-btn" type="button">
+        <span id="generateLabel">生成</span>
+        <span id="generateSpinner" class="spinner hidden"></span>
+      </button>
+    </section>
+
+    <section id="view-presets" class="view">
+      <div class="page-head">
+        <div>
+          <p class="kicker">Library</p>
+          <h2>画师串与正负面预设</h2>
+          <p class="subtle">保存常用画师串、风格正面词和负面词。工作台只需要选名字。</p>
+        </div>
+        <button id="addPresetBtn" class="primary-btn" type="button">新增预设</button>
+      </div>
+      <div id="presetList" class="library-list"></div>
+    </section>
+
+    <section id="view-anchors" class="view">
+      <div class="page-head">
+        <div>
+          <p class="kicker">Characters</p>
+          <h2>角色锚点</h2>
+          <p class="subtle">一人一条锚点。画面词里写 [角色名] 会自动注入对应锚点；也仍可在工作台直接勾选角色。</p>
+        </div>
+        <button id="addAnchorBtn" class="primary-btn" type="button">新增角色</button>
+      </div>
+      <div id="anchorList" class="library-list"></div>
+    </section>
+
+    <section id="view-gallery" class="view">
+      <div class="page-head">
+        <div>
+          <p class="kicker">Gallery</p>
+          <h2>图库</h2>
+          <p id="galleryCount" class="subtle">0 张</p>
+        </div>
+        <button id="clearGalleryBtn" class="text-btn danger" type="button">清空图库</button>
+      </div>
+      <div id="galleryGrid" class="gallery-grid"></div>
+    </section>
+
+    <section id="view-settings" class="view">
+      <section class="card settings-card">
+        <div class="section-head">
+          <div>
+            <p class="kicker">Connection</p>
+            <h2>接口设置</h2>
+          </div>
+        </div>
+
+        <label class="field">
+          <span>接口格式</span>
+          <select id="apiFormat">
+            <option value="nai">NovelAI 格式</option>
+            <option value="openai">OpenAI 兼容格式</option>
+          </select>
+        </label>
+
+        <label class="field">
+          <span>接口地址</span>
+          <input id="endpoint" type="url" autocomplete="off" />
+          <small id="endpointHint"></small>
+        </label>
+
+        <label class="field">
+          <span>API Key / Token</span>
+          <div class="password-row">
+            <input id="apiKey" type="password" placeholder="pst-… 或其他 Token" autocomplete="off" />
+            <button id="toggleKeyBtn" type="button" class="chip">显示</button>
+          </div>
+        </label>
+
+        <label class="switch-row">
+          <input id="rememberKey" type="checkbox" checked />
+          <span>仅在这台设备保存 Token</span>
+        </label>
+
+        <div id="settingsStatus" class="settings-status"></div>
+
+        <div class="settings-actions">
+          <button id="testBtn" class="secondary-btn" type="button">测试连接</button>
+          <button id="saveSettingsBtn" class="primary-btn" type="button">保存设置</button>
+        </div>
+
+        <div class="export-box">
+          <div>
+            <strong>图库备份</strong>
+            <p>把这台设备里保存的全部原图一次性打包成 ZIP。</p>
+          </div>
+          <button id="exportGalleryZipBtn" class="secondary-btn" type="button">导出图库 ZIP</button>
+        </div>
+      </section>
+    </section>
+  </main>
+
+  <dialog id="presetDialog" class="modal">
+    <form id="presetForm" class="modal-panel">
+      <div class="modal-head">
+        <h2 id="presetDialogTitle">新增预设</h2>
+        <button class="icon-btn" type="button" data-close="presetDialog">×</button>
+      </div>
+      <input id="presetId" type="hidden" />
+      <label class="field">
+        <span>预设名称</span>
+        <input id="presetName" required placeholder="例如：透明水彩 / 西幻 CG" />
+      </label>
+      <label class="field">
+        <span>画师串 / 正面词</span>
+        <textarea id="presetPositive" rows="8" placeholder="artist:..., watercolor, cinematic lighting, ..."></textarea>
+      </label>
+      <label class="field">
+        <span>负面词</span>
+        <textarea id="presetNegative" rows="6" placeholder="lowres, bad anatomy, ..."></textarea>
+      </label>
+      <div class="settings-actions">
+        <button class="secondary-btn" type="button" data-close="presetDialog">取消</button>
+        <button class="primary-btn" type="submit">保存预设</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="anchorDialog" class="modal">
+    <form id="anchorForm" class="modal-panel">
+      <div class="modal-head">
+        <h2 id="anchorDialogTitle">新增角色</h2>
+        <button class="icon-btn" type="button" data-close="anchorDialog">×</button>
+      </div>
+      <input id="anchorId" type="hidden" />
+      <label class="field">
+        <span>角色名称</span>
+        <input id="anchorName" required placeholder="例如：Isolde" />
+      </label>
+      <label class="field">
+        <span>角色锚点词</span>
+        <textarea id="anchorPrompt" rows="9" placeholder="1girl, long straight black hair, ..."></textarea>
+      </label>
+      <div class="settings-actions">
+        <button class="secondary-btn" type="button" data-close="anchorDialog">取消</button>
+        <button class="primary-btn" type="submit">保存角色</button>
+      </div>
+    </form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script type="module" src="./app.js?v=16"></script>
+</body>
+</html>
