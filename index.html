@@ -10,7 +10,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=15" />
   <link rel="apple-touch-icon" href="./icon.svg?v=15" />
-  <link rel="stylesheet" href="./app.css?v=29" />
+  <link rel="stylesheet" href="./app.css?v=30" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -266,16 +266,13 @@
           <button id="saveSettingsBtn" class="primary-btn" type="button">保存设置</button>
         </div>
 
-        <div class="settings-subsection">
-          <div class="section-head">
-            <div>
-              <p class="kicker">Reference</p>
-              <h2>参考图与 Vibe</h2>
-            </div>
+        <details class="settings-fold">
+          <summary>
+            <span>参考图与 Vibe</span>
             <span id="referenceModelHint" class="subtle compact-note">仅 V4.5</span>
-          </div>
-
-          <div class="reference-grid">
+          </summary>
+          <div class="settings-fold-body">
+            <div class="reference-grid">
             <section class="reference-panel">
               <div class="reference-panel-head">
                 <div>
@@ -369,13 +366,15 @@
               <p class="reference-note">同一张图 + 同一 Information 会缓存编码，避免重复付 Vibe 编码费。</p>
             </section>
           </div>
-        </div>
-
-        <div class="watermark-box">
-          <div>
-            <strong>下载水印</strong>
-            <p>默认不使用水印。上传一张已经排好版的透明水印图后，「保存水印版」会把它完整铺满整张成图；水印只保存在这台设备。</p>
+        
           </div>
+        </details>
+
+        <details class="settings-fold">
+          <summary><span>下载水印</span></summary>
+          <div class="settings-fold-body watermark-box">
+            <p class="settings-fold-note">默认不使用水印。上传一张已经排好版的透明水印图后，「保存水印版」会把它完整铺满整张成图；水印只保存在这台设备。</p>
+          
           <input id="watermarkFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
           <div class="watermark-actions">
             <button id="uploadWatermarkBtn" class="secondary-btn" type="button">上传水印</button>
@@ -390,15 +389,20 @@
             <img id="watermarkPreview" alt="当前水印预览" />
             <span id="watermarkStatus"></span>
           </div>
-        </div>
-
-        <div class="export-box">
-          <div>
-            <strong>图库备份</strong>
-            <p>把这台设备里保存的全部原图一次性打包成 ZIP。</p>
+        
           </div>
+        </details>
+
+        <details class="settings-fold">
+          <summary><span>图库备份</span></summary>
+          <div class="settings-fold-body export-box">
+            <div><p class="settings-fold-note">把这台设备里保存的全部原图一次性打包成 ZIP。</p></div>
+          
           <button id="exportGalleryZipBtn" class="secondary-btn" type="button">导出图库 ZIP</button>
-        </div>
+        
+          </div>
+        </details>
+
       </section>
     </section>
   </main>

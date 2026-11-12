@@ -347,3 +347,58 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
     border-radius:13px;
   }
 }
+
+/* v30: collapsible secondary settings */
+.settings-fold{
+  margin-top:12px;
+  border:1px solid var(--line);
+  border-radius:16px;
+  background:rgba(247,250,253,.76);
+  overflow:hidden;
+}
+.settings-fold>summary{
+  list-style:none;
+  min-height:50px;
+  padding:0 14px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  cursor:pointer;
+  color:var(--text);
+  font-size:14px;
+  font-weight:700;
+}
+.settings-fold>summary::-webkit-details-marker{display:none}
+.settings-fold>summary::after{
+  content:'⌄';
+  flex:0 0 auto;
+  color:var(--muted);
+  font-size:18px;
+  line-height:1;
+  transform:translateY(-1px);
+  transition:transform .18s ease;
+}
+.settings-fold[open]>summary::after{transform:rotate(180deg) translateY(1px)}
+.settings-fold[open]>summary{border-bottom:1px solid var(--line)}
+.settings-fold-body{padding:12px 13px 14px}
+.settings-fold-body.watermark-box,
+.settings-fold-body.export-box{
+  margin-top:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+  padding:12px 13px 14px;
+}
+.settings-fold-note{
+  margin:0 0 10px;
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.5;
+}
+@media(max-width:560px){
+  .settings-fold>summary{min-height:48px;padding:0 13px}
+  .settings-fold-body{padding:10px 12px 13px}
+  .settings-fold-body.watermark-box,
+  .settings-fold-body.export-box{padding:10px 12px 13px}
+}
