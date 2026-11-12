@@ -655,7 +655,7 @@ async function addCustomWatermark(source){
 }
 async function saveWatermarkedBlob(blob,name){
   const watermarked=await addCustomWatermark(blob);
-  saveBlob(watermarked,name);
+  await saveBlob(watermarked,name);
 }
 async function testConnection(){
   els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
