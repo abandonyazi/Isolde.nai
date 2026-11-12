@@ -3,6 +3,7 @@ const OFFICIAL_BASE = 'https://image.novelai.net';
 const NAI_PROXY_BASE = 'https://isolde-nai-proxy.abandonyazi.workers.dev';
 const SETTINGS_KEY = 'isolde_nai_settings_v2';
 const TOKEN_KEY = 'isolde_nai_token_v1';
+const THEME_KEY = 'isolde_nai_theme_v1';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
 const DB_NAME = 'isolde-nai-gallery';
@@ -11,7 +12,7 @@ const DB_VERSION = 3;
 const els = {
   tabs: [...document.querySelectorAll('.tab')],
   views: [...document.querySelectorAll('.view')],
-  miniStatus: $('miniStatus'),
+  miniStatus: $('miniStatus'), themeToggle: $('themeToggle'),
   connectionBanner: $('connectionBanner'), connectionText: $('connectionText'),
   presetSelect: $('presetSelect'), anchorPicker: $('anchorPicker'),
   scenePrompt: $('scenePrompt'), extraNegative: $('extraNegative'),
@@ -76,6 +77,23 @@ function rehydrateConnectionFields() {
     const savedToken = loadSavedToken();
     if (savedToken) els.apiKey.value = savedToken;
   }
+}
+function preferredTheme() {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === 'dark' || saved === 'light') return saved;
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+}
+function applyTheme(theme,{persist=false}={}) {
+  const next = theme === 'dark' ? 'dark' : 'light';
+  document.documentElement.dataset.theme = next;
+  document.documentElement.style.colorScheme = next;
+  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', next === 'dark' ? '#111a23' : '#f3f7fb');
+  if (els.themeToggle) {
+    els.themeToggle.textContent = next === 'dark' ? '☀︎' : '☾';
+    els.themeToggle.setAttribute('aria-label', next === 'dark' ? '切换到日间模式' : '切换到夜间模式');
+    els.themeToggle.title = next === 'dark' ? '切换到日间模式' : '切换到夜间模式';
+  }
+  if (persist) localStorage.setItem(THEME_KEY,next);
 }
 function showToast(message) {
   els.toast.textContent = message;
@@ -1428,6 +1446,11 @@ async function clearGallery(){
   const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();showToast('图库已清空');
 }
 
+applyTheme(document.documentElement.dataset.theme || preferredTheme());
+els.themeToggle?.addEventListener('click',()=>{
+  const next=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  applyTheme(next,{persist:true});
+});
 els.tabs.forEach(b=>b.addEventListener('click',()=>goView(b.dataset.view)));
 els.presetSelect.addEventListener('change',()=>{settings.presetId=els.presetSelect.value;updateAssembly();});
 els.scenePrompt.addEventListener('input',updateAssembly);
