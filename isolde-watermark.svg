@@ -1,0 +1,108 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 280" role="img" aria-label="Isolde watermark badge">
+  <defs>
+    <filter id="shadow" x="-30%" y="-30%" width="160%" height="180%">
+      <feDropShadow dx="0" dy="3" stdDeviation="3.5" flood-color="#8b6171" flood-opacity=".18"/>
+    </filter>
+    <linearGradient id="hair" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#4a3c45"/>
+      <stop offset="1" stop-color="#6a505c"/>
+    </linearGradient>
+    <linearGradient id="pink" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ffd9e5"/>
+      <stop offset="1" stop-color="#efb5c8"/>
+    </linearGradient>
+  </defs>
+
+  <g filter="url(#shadow)" stroke-linecap="round" stroke-linejoin="round">
+    <!-- sparkles -->
+    <g fill="#f4b8cb" opacity=".82">
+      <path d="M40 184l5 10 10 5-10 5-5 10-5-10-10-5 10-5z"/>
+      <path d="M365 158l4 8 8 4-8 4-4 8-4-8-8-4 8-4z"/>
+      <path d="M386 205l3 6 6 3-6 3-3 6-3-6-6-3 6-3z"/>
+    </g>
+
+    <!-- cat tail -->
+    <path d="M331 155c42-5 50-37 31-49-16-10-31 2-23 17 6 10 19 5 18-4"
+      fill="none" stroke="#6a505c" stroke-width="15"/>
+    <path d="M331 155c42-5 50-37 31-49-16-10-31 2-23 17 6 10 19 5 18-4"
+      fill="none" stroke="#f8d7e2" stroke-width="6" opacity=".7"/>
+
+    <!-- chibi body behind plaque -->
+    <path d="M133 152c7-44 38-70 82-70 47 0 79 28 84 72l-17 47H151z"
+      fill="#fff7fa" stroke="#dba4b7" stroke-width="5"/>
+
+    <!-- hair mass + cat ears -->
+    <path d="M139 121c-3-47 34-86 79-86 43 0 78 33 79 80-24-11-47-14-75-12-32 2-57 8-83 18z"
+      fill="url(#hair)" stroke="#6a505c" stroke-width="5"/>
+    <path d="M154 69l18-43 31 28M282 68l-18-42-31 28"
+      fill="url(#hair)" stroke="#6a505c" stroke-width="5"/>
+    <path d="M163 58l10-23 17 15M272 58l-10-23-17 15"
+      fill="#f4c3d2" stroke="#dba4b7" stroke-width="3"/>
+
+    <!-- bangs -->
+    <path d="M162 93c16-28 37-39 61-39 24 0 46 11 60 35-10-5-19-7-27-8-7 12-17 21-29 26 1-10 0-19-3-29-13 16-34 26-62 30z"
+      fill="#4d3d46" stroke="#6a505c" stroke-width="4"/>
+
+    <!-- face -->
+    <ellipse cx="219" cy="115" rx="57" ry="49" fill="#fff5f7" stroke="#dba4b7" stroke-width="4"/>
+    <ellipse cx="184" cy="128" rx="19" ry="10" fill="#f7c4d2" opacity=".72"/>
+    <ellipse cx="254" cy="128" rx="19" ry="10" fill="#f7c4d2" opacity=".72"/>
+
+    <!-- glasses -->
+    <g fill="none" stroke="#d592aa" stroke-width="4">
+      <rect x="171" y="101" width="39" height="27" rx="12"/>
+      <rect x="228" y="101" width="39" height="27" rx="12"/>
+      <path d="M210 113h18"/>
+    </g>
+    <circle cx="190" cy="114" r="4" fill="#59454f"/>
+    <circle cx="247" cy="114" r="4" fill="#59454f"/>
+    <path d="M207 137c8 5 16 5 24 0" fill="none" stroke="#b8738b" stroke-width="3"/>
+
+    <!-- angry flower clip + emphasis -->
+    <g transform="translate(279 74)" stroke="#d96a8e" stroke-width="3" fill="#ffd7e4">
+      <path d="M0-14c5 0 6 6 9 8 4-2 9-1 10 4 1 5-4 7-6 10 2 4 1 9-4 11-5 1-7-4-10-6-4 2-9 1-10-4-1-5 4-7 6-10-2-4-1-9 5-13z"/>
+    </g>
+    <g stroke="#ee9ab6" stroke-width="5">
+      <path d="M315 68l10-12"/>
+      <path d="M325 78l14-5"/>
+      <path d="M309 56l3-15"/>
+    </g>
+
+    <!-- prohibition sign hugged in front -->
+    <g transform="translate(218 166)">
+      <circle r="35" fill="#fff" stroke="#e993ad" stroke-width="8"/>
+      <path d="M-24-24L24 24" stroke="#e993ad" stroke-width="9"/>
+    </g>
+
+    <!-- arms hugging sign -->
+    <path d="M162 151c11-10 24-7 34 5l11 15M276 151c-11-10-24-7-34 5l-11 15"
+      fill="none" stroke="#fff5f7" stroke-width="20"/>
+    <path d="M162 151c11-10 24-7 34 5l11 15M276 151c-11-10-24-7-34 5l-11 15"
+      fill="none" stroke="#dba4b7" stroke-width="4"/>
+
+    <!-- cloud plaque -->
+    <path d="M88 190c0-18 16-31 34-28 5-18 23-28 40-21 9-14 25-21 41-16 16-9 38-4 48 10 17-4 35 5 40 21 22-5 41 9 41 30 0 17-13 30-30 30H116c-16 0-28-12-28-26z"
+      fill="#fff9fb" stroke="#dba4b7" stroke-width="5"/>
+    <text x="210" y="201" text-anchor="middle"
+      font-family="'Brush Script MT','Segoe Script','Comic Sans MS',cursive"
+      font-size="42" font-style="italic" font-weight="700"
+      fill="#d98aa5">by Isolde</text>
+
+    <!-- paw -->
+    <g transform="translate(324 192)" fill="#efb5c8">
+      <ellipse cx="0" cy="8" rx="10" ry="8"/>
+      <circle cx="-11" cy="-4" r="5"/>
+      <circle cx="-3" cy="-10" r="5"/>
+      <circle cx="6" cy="-9" r="5"/>
+      <circle cx="13" cy="-1" r="5"/>
+    </g>
+
+    <!-- bow -->
+    <g transform="translate(210 230)" fill="url(#pink)" stroke="#dba4b7" stroke-width="4">
+      <ellipse cx="-30" cy="0" rx="31" ry="18"/>
+      <ellipse cx="30" cy="0" rx="31" ry="18"/>
+      <circle cx="0" cy="0" r="11"/>
+      <path d="M-8 9l-26 37 37-18M8 9l26 37-37-18"/>
+    </g>
+  </g>
+</svg>
