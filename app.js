@@ -19,8 +19,8 @@ const els = {
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
-  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
   toast: $('toast')
@@ -178,7 +178,7 @@ function characterPlaceholderNames(text) {
   const names = new Set();
   String(text || '').replace(/\[([^\[\]\r\n]{1,100})\]/g, (match, rawName) => {
     const name = rawName.trim();
-    if (anchors.some(a => a.name === name)) names.add(name);
+if (anchors.some(a => a.name === name)) names.add(name);
     return match;
   });
   return names;
@@ -358,7 +358,7 @@ async function pngFromMaybeZip(bytes) {
   }
   const {unzipSync}=await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
   const files=unzipSync(bytes); const key=Object.keys(files).find(n=>n.toLowerCase().endsWith('.png'));
-  if(!key) throw new Error('ZIP 中没有找到 PNG');
+if(!key) throw new Error('ZIP 中没有找到 PNG');
   return new Blob([files[key]],{type:'image/png'});
 }
 function parseOpenAiImage(text) {
@@ -538,7 +538,7 @@ function applyGalleryMeta(item){
   if(item.width)els.width.value=item.width;if(item.height)els.height.value=item.height;
   if(item.steps)els.steps.value=item.steps;if(item.cfg!=null)els.cfg.value=item.cfg;
   els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
-  renderAnchorPicker();updateAssembly();showResult(item.blob,item.seed||'gallery');goView('workbench');
+renderAnchorPicker();updateAssembly();showResult(item.blob,item.seed||'gallery');goView('workbench');
 }
 async function renderGallery(){
   els.galleryGrid.innerHTML='';
@@ -658,18 +658,26 @@ els.regenBtn.addEventListener('click',()=>{
 els.newSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();generate({forceSeed:els.seed.value});});
 
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
-els.presetForm.addEventListener('submit',(e)=>{
-  e.preventDefault();const name=els.presetName.value.trim();if(!name)return;
-  const id=els.presetId.value||uid('preset');const item={id,name,positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
-  const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
-  saveJson(PRESETS_KEY,presets);settings.presetId=id;renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();els.presetDialog.close();showToast('预设已保存');
+els.savePresetBtn.addEventListener('click',()=>{
+  const name=els.presetName.value.trim();if(!name){els.presetName.focus();return;}
+  try{
+    const id=els.presetId.value||uid('preset');
+    const item={id,name,positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
+    const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
+    saveJson(PRESETS_KEY,presets);settings.presetId=id;els.presetDialog.close();
+    renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();showToast('预设已保存');
+  }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
-els.anchorForm.addEventListener('submit',(e)=>{
-  e.preventDefault();const name=els.anchorName.value.trim();if(!name)return;
-  const id=els.anchorId.value||uid('anchor');const item={id,name,prompt:els.anchorPrompt.value.trim(),updatedAt:Date.now()};
-  const idx=anchors.findIndex(a=>a.id===id);if(idx>=0)anchors[idx]={...anchors[idx],...item};else anchors.unshift(item);
-  saveJson(ANCHORS_KEY,anchors);renderAnchors();updateAssembly();els.anchorDialog.close();showToast('角色锚点已保存');
+els.saveAnchorBtn.addEventListener('click',()=>{
+  const name=els.anchorName.value.trim();if(!name){els.anchorName.focus();return;}
+  try{
+    const id=els.anchorId.value||uid('anchor');
+    const item={id,name,prompt:els.anchorPrompt.value.trim(),updatedAt:Date.now()};
+    const idx=anchors.findIndex(a=>a.id===id);if(idx>=0)anchors[idx]={...anchors[idx],...item};else anchors.unshift(item);
+    saveJson(ANCHORS_KEY,anchors);els.anchorDialog.close();
+    renderAnchors();updateAssembly();showToast('角色锚点已保存');
+  }catch(e){console.error(e);showToast('角色保存失败');}
 });
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.close)?.close()));
 
