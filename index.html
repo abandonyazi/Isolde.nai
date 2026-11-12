@@ -344,6 +344,17 @@
                 <span id="vibeStatus"></span>
               </div>
 
+              <label class="field compact-field">
+                <span>Vibe 预设</span>
+                <select id="vibePresetSelect">
+                  <option value="">未选择预设</option>
+                </select>
+              </label>
+              <div class="reference-actions">
+                <button id="saveVibePresetBtn" class="secondary-btn" type="button">保存当前为预设</button>
+                <button id="deleteVibePresetBtn" class="text-btn danger" type="button" disabled>删除预设</button>
+              </div>
+
               <label class="reference-slider">
                 <span>Strength</span>
                 <input id="vibeStrength" type="range" min="0" max="1" step="0.05" value="0.6" />
@@ -441,6 +452,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=23"></script>
+  <script type="module" src="./app.js?v=24"></script>
 </body>
 </html>

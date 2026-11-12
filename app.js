@@ -26,7 +26,7 @@ const els = {
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
-  vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
+  vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibePresetSelect: $('vibePresetSelect'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
   toast: $('toast')
 };
 
@@ -603,6 +603,85 @@ async function removeLocalAsset(key){
   });
   db.close();
 }
+async function listLocalAssets(prefix){
+  const db=await openDb();
+  const items=await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readonly');
+    const req=tx.objectStore('assets').getAll();
+    req.onsuccess=()=>resolve((req.result||[]).filter(item=>String(item?.key||'').startsWith(prefix)));
+    req.onerror=()=>reject(req.error);
+  });
+  db.close();
+  return items.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
+}
+async function renderVibePresets(selectedKey=''){
+  const items=await listLocalAssets('vibe-preset:');
+  const previous=selectedKey||els.vibePresetSelect.value||'';
+  els.vibePresetSelect.innerHTML='<option value="">未选择预设</option>';
+  for(const item of items){
+    const option=document.createElement('option');
+    option.value=item.key;
+    option.textContent=item.name||'未命名 Vibe';
+    els.vibePresetSelect.appendChild(option);
+  }
+  if(previous&&items.some(item=>item.key===previous))els.vibePresetSelect.value=previous;
+  els.deleteVibePresetBtn.disabled=!els.vibePresetSelect.value;
+}
+async function saveCurrentVibePreset(){
+  const asset=currentVibeAsset||await getLocalAsset('vibe');
+  if(!asset?.blob){showToast('先添加一张 Vibe 图片');return;}
+  const fallback=(asset.name||'Vibe').replace(/\.[^.]+$/,'');
+  const name=prompt('给这个 Vibe 预设起个名字',fallback);
+  if(name===null)return;
+  const clean=name.trim();
+  if(!clean){showToast('预设名称不能为空');return;}
+  const key=`vibe-preset:${uid('vibe')}`;
+  await putAssetRecord({
+    key,
+    name:clean,
+    blob:asset.blob,
+    fileName:asset.name||'vibe',
+    type:asset.type||asset.blob.type||'',
+    strength:clampNumber(els.vibeStrength.value,0,1,.6),
+    information:clampNumber(els.vibeInformation.value,.05,1,.7),
+    updatedAt:Date.now()
+  });
+  await renderVibePresets(key);
+  showToast(`Vibe 预设「${clean}」已保存`);
+}
+async function applyVibePreset(key){
+  if(!key){els.deleteVibePresetBtn.disabled=true;return;}
+  const preset=await getLocalAsset(key);
+  if(!preset?.blob){showToast('这个 Vibe 预设已不存在');await renderVibePresets();return;}
+  await putAssetRecord({
+    key:'vibe',
+    blob:preset.blob,
+    name:preset.fileName||preset.name||'vibe',
+    type:preset.type||preset.blob.type||'',
+    updatedAt:Date.now()
+  });
+  els.vibeStrength.value=String(clampNumber(preset.strength,0,1,.6));
+  els.vibeInformation.value=String(clampNumber(preset.information,.05,1,.7));
+  els.vibeStrengthValue.textContent=Number(els.vibeStrength.value).toFixed(2);
+  els.vibeInformationValue.textContent=Number(els.vibeInformation.value).toFixed(2);
+  els.vibeEnabled.checked=true;
+  els.referenceEnabled.checked=false;
+  await refreshReferenceUi();
+  els.vibePresetSelect.value=key;
+  els.deleteVibePresetBtn.disabled=false;
+  saveSettings();
+  showToast(`已载入 Vibe 预设「${preset.name||'未命名'}」`);
+}
+async function deleteSelectedVibePreset(){
+  const key=els.vibePresetSelect.value;
+  if(!key)return;
+  const preset=await getLocalAsset(key);
+  const name=preset?.name||'这个 Vibe 预设';
+  if(!confirm(`删除 Vibe 预设「${name}」？`))return;
+  await removeLocalAsset(key);
+  await renderVibePresets();
+  showToast('Vibe 预设已删除');
+}
 async function refreshReferenceUi(){
   [currentReferenceAsset,currentVibeAsset]=await Promise.all([getLocalAsset('reference'),getLocalAsset('vibe')]);
   if(referencePreviewUrl){URL.revokeObjectURL(referencePreviewUrl);referencePreviewUrl=null;}
@@ -639,7 +718,7 @@ async function refreshReferenceUi(){
 }
 function updateReferenceModelHint(){
   const supported=els.model.value.startsWith('nai-diffusion-4-5');
-  els.referenceModelHint.textContent=supported?'V4.5 可用':'当前模型不支持';
+  els.referenceModelHint.textContent=supported?'V4.5 生效':'V5 自动忽略';
   els.referenceModelHint.classList.toggle('warning',!supported);
 }
 function blobToBase64(blob){
@@ -722,8 +801,8 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
   const useReference=els.referenceEnabled.checked;
   const useVibe=els.vibeEnabled.checked;
   if(!useReference&&!useVibe)return naiBody;
+  if(!naiBody.model.startsWith('nai-diffusion-4-5'))return naiBody;
   if(els.apiFormat.value!=='nai')throw new Error('Reference / Vibe 目前只支持 NovelAI 格式接口');
-  if(!naiBody.model.startsWith('nai-diffusion-4-5'))throw new Error('Reference / Vibe 目前只支持 NAI V4.5');
   if(useReference&&useVibe)throw new Error('Precise Reference 和 Vibe 不能同时启用');
 
   if(useReference){
@@ -1037,6 +1116,15 @@ els.removeVibeBtn?.addEventListener('click',async()=>{
     showToast('Vibe 已移除');
   }catch(e){console.error(e);showToast('Vibe 移除失败');}
 });
+els.vibePresetSelect?.addEventListener('change',()=>{
+  applyVibePreset(els.vibePresetSelect.value).catch(e=>{console.error(e);showToast('Vibe 预设载入失败');});
+});
+els.saveVibePresetBtn?.addEventListener('click',()=>{
+  saveCurrentVibePreset().catch(e=>{console.error(e);showToast('Vibe 预设保存失败');});
+});
+els.deleteVibePresetBtn?.addEventListener('click',()=>{
+  deleteSelectedVibePreset().catch(e=>{console.error(e);showToast('Vibe 预设删除失败');});
+});
 els.referenceEnabled?.addEventListener('change',()=>{
   if(els.referenceEnabled.checked){
     if(!currentReferenceAsset?.blob){els.referenceEnabled.checked=false;showToast('先添加 Reference 图片');return;}
@@ -1064,4 +1152,5 @@ els.watermarkOpacity?.addEventListener('change',saveSettings);
 loadState();
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
+renderVibePresets().catch(e=>console.warn('Vibe 预设读取失败',e));
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});

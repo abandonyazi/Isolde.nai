@@ -1,5 +1,5 @@
-const CACHE = 'isolde-nai-v23';
-const SHELL = ['./', './index.html', './app.css?v=12', './app.js?v=23', './manifest.webmanifest', './icon.svg?v=15'];
+const CACHE = 'isolde-nai-v24';
+const SHELL = ['./', './index.html', './app.css?v=12', './app.js?v=24', './manifest.webmanifest', './icon.svg?v=15'];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).catch(() => {}));
