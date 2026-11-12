@@ -158,7 +158,7 @@ function aspectFor(w,h) {
   return [...els.aspect.options].some(o=>o.value===value) ? value : 'custom';
 }
 function setAspect(value) {
-  if (value === 'custom') return;
+if (value === 'custom') return;
   const [w,h] = value.split('x').map(Number);
   els.width.value = w; els.height.value = h;
   saveSettings();
@@ -338,7 +338,7 @@ function buildNaiPayload(seed=null) {
     image_format:'png',stream:'msgpack',
     v4_prompt:{caption:{base_caption:positive,char_captions:[]},use_coords:false,use_order:true},
     v4_negative_prompt:{caption:{base_caption:negative,char_captions:[]},legacy_uc:false},
-    characterPrompts:[]
+characterPrompts:[]
   };
   if (seed !== null && seed !== undefined && String(seed).trim() !== '') {
     params.seed = Number(seed);
@@ -384,5 +384,304 @@ async function generate({forceSeed=null}={}) {
   try{
     let blob;
     if(els.apiFormat.value==='nai'){
-      const base=naiFetc
-...[output truncated]
+      const base=naiFetchBase(endpoint);
+      const resp=await fetch(`${base}/ai/generate-image`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/zip,image/png'},body:JSON.stringify(naiBody)});
+      const bytes=new Uint8Array(await resp.arrayBuffer());
+      if(!resp.ok) throw new Error(new TextDecoder().decode(bytes).slice(0,900).trim()||`接口错误 ${resp.status}`);
+      blob=await pngFromMaybeZip(bytes);
+    }else{
+      const resp=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(buildOpenAiBody(naiBody))});
+      const text=await resp.text(); if(!resp.ok) throw new Error(text.slice(0,900)||`接口错误 ${resp.status}`); blob=parseOpenAiImage(text);
+    }
+    showResult(blob,seed);
+    const p=currentPreset();
+    await addGallery(blob,{
+      seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
+      assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
+      presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
+      model:els.model.value,sampler:els.sampler.value,width:Number(els.width.value),height:Number(els.height.value),
+      steps:Number(els.steps.value),cfg:Number(els.cfg.value),createdAt:Date.now()
+    });
+    saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
+  }catch(e){
+    console.error(e); setConnectionState('error','生成失败');
+    const msg=e?.message||String(e); showToast(msg.slice(0,200));
+  }finally{
+    busy=false; els.generateBtn.disabled=false; els.generateLabel.textContent='生成'; els.generateSpinner.classList.add('hidden');
+  }
+}
+function showResult(blob,seed){
+  if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+  currentResultBlob=blob;
+  currentObjectUrl=URL.createObjectURL(blob); els.resultImage.src=currentObjectUrl; els.saveLink.href=currentObjectUrl; els.saveLink.download=seed ? `nai-${seed}.png` : `nai-${Date.now()}.png`;
+  els.emptyResult.classList.add('hidden'); els.resultWrap.classList.remove('hidden');
+}
+function saveBlob(blob,name){
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');
+  a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+function loadCanvasImage(src){
+  return new Promise((resolve,reject)=>{
+    const image=new Image();
+    image.onload=()=>resolve(image);
+    image.onerror=()=>reject(new Error('水印素材读取失败'));
+    image.src=src;
+  });
+}
+function drawWatermarkPaw(ctx,x,y,size){
+  ctx.save(); ctx.translate(x,y);
+  ctx.fillStyle='rgba(230,145,174,.86)';
+  ctx.strokeStyle='rgba(255,255,255,.72)';
+  ctx.lineWidth=Math.max(1,size*.022);
+  const dot=(dx,dy,r)=>{ctx.beginPath();ctx.arc(dx,dy,r,0,Math.PI*2);ctx.fill();ctx.stroke();};
+  dot(0,size*.12,size*.22); dot(-size*.28,-size*.12,size*.1); dot(-size*.1,-size*.26,size*.1); dot(size*.12,-size*.25,size*.1); dot(size*.3,-size*.08,size*.1);
+  ctx.restore();
+}
+async function addIsoldeWatermark(source){
+  const sourceUrl=URL.createObjectURL(source);
+  try{
+    const [image,badge]=await Promise.all([loadCanvasImage(sourceUrl),loadCanvasImage('./isolde-watermark.svg?v=12')]);
+    const canvas=document.createElement('canvas');
+    canvas.width=image.naturalWidth; canvas.height=image.naturalHeight;
+    const ctx=canvas.getContext('2d');
+    if(!ctx) throw new Error('浏览器无法生成水印');
+    ctx.drawImage(image,0,0);
+    const w=canvas.width,h=canvas.height,short=Math.max(1,Math.min(w,h));
+    const paw=Math.max(18,short*.045),stepX=Math.max(120,short*.27),stepY=Math.max(105,short*.23),fontSize=Math.max(13,short*.024),latticeStep=Math.max(120,short*.24);
+
+    ctx.save();
+    ctx.globalAlpha=.11;
+    ctx.strokeStyle='rgba(226,146,173,.92)';
+    ctx.lineWidth=Math.max(1,short*.0016);
+    ctx.setLineDash([Math.max(3,short*.005),Math.max(6,short*.009)]);
+    for(let offset=-h;offset<w+h;offset+=latticeStep){
+      ctx.beginPath();ctx.moveTo(offset,0);ctx.lineTo(offset+h,h);ctx.stroke();
+      ctx.beginPath();ctx.moveTo(offset,0);ctx.lineTo(offset-h,h);ctx.stroke();
+    }
+    ctx.restore();
+
+    ctx.save();
+    ctx.translate(w/2,h/2); ctx.rotate(-Math.PI/12); ctx.translate(-w/2,-h/2);
+    ctx.globalAlpha=.14;
+    ctx.font=`700 ${fontSize}px "Brush Script MT","Segoe Script",cursive`;
+    ctx.textBaseline='middle';
+    ctx.fillStyle='rgba(225,137,168,.98)';
+    ctx.strokeStyle='rgba(255,255,255,.72)';
+    ctx.lineWidth=Math.max(1,fontSize*.07);
+    for(let y=-stepY*2,row=0;y<h+stepY*2;y+=stepY,row++){
+      for(let x=-stepX*2+(row%2?stepX/2:0);x<w+stepX*2;x+=stepX){
+        drawWatermarkPaw(ctx,x,y,paw);
+        const tx=x+paw*.62;
+        ctx.strokeText('by Isolde',tx,y+paw*.05);
+        ctx.fillText('by Isolde',tx,y+paw*.05);
+      }
+    }
+    ctx.restore();
+
+    const badgeWidth=Math.min(short*.15,180);
+    const badgeHeight=badgeWidth*(badge.naturalHeight/Math.max(1,badge.naturalWidth));
+    const margin=Math.max(12,short*.022);
+    ctx.save(); ctx.globalAlpha=.50;
+    ctx.drawImage(badge,w-badgeWidth-margin,h-badgeHeight-margin,badgeWidth,badgeHeight);
+    ctx.restore();
+
+    return await new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('水印导出失败')),'image/png'));
+  }finally{
+    URL.revokeObjectURL(sourceUrl);
+  }
+}
+async function saveWatermarkedBlob(blob,name){
+  const watermarked=await addIsoldeWatermark(blob);
+  saveBlob(watermarked,name);
+}
+async function testConnection(){
+  els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
+  try{
+    const key=els.apiKey.value.trim(); if(!key) throw new Error('先填写 Token');
+    if(els.apiFormat.value==='nai'){
+      const base=naiFetchBase(els.endpoint.value);
+      const r=await fetch(`${base}/user/subscription`,{headers:{Authorization:`Bearer ${key}`}});
+      const txt=await r.text(); if(!r.ok) throw new Error(txt.slice(0,500)||`接口返回 ${r.status}`);
+      const j=JSON.parse(txt); const tier=Number(j?.tier??0); const anlas=Number(j?.trainingStepsLeft?.fixedTrainingStepsLeft??0)+Number(j?.trainingStepsLeft?.purchasedTrainingSteps??0);
+      els.settingsStatus.className='settings-status ok'; els.settingsStatus.textContent=`连通成功 · tier ${tier} · Anlas ${anlas}`; setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · 已连接':'自定义 NAI · 已连接');
+    }else{
+      normalizedEndpoint('openai',els.endpoint.value); els.settingsStatus.className='settings-status ok'; els.settingsStatus.textContent='OpenAI 兼容接口已保存，直接试生成最可靠。';
+    }
+  }catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e?.message||String(e);setConnectionState('error','连接测试失败');}
+}
+function openDb(){
+  return new Promise((resolve,reject)=>{
+    const req=indexedDB.open(DB_NAME,DB_VERSION);
+    req.onupgradeneeded=()=>{const db=req.result;if(!db.objectStoreNames.contains('history')) db.createObjectStore('history',{keyPath:'id',autoIncrement:true});};
+    req.onsuccess=()=>resolve(req.result);req.onerror=()=>reject(req.error);
+  });
+}
+async function addGallery(blob,meta){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').add({blob,...meta});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+  db.close();
+}
+async function getGallery(){
+  const db=await openDb();const items=await new Promise((resolve,reject)=>{const tx=db.transaction('history','readonly');const req=tx.objectStore('history').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});db.close();return items.sort((a,b)=>(b.id||0)-(a.id||0));
+}
+async function deleteGalleryItem(id){
+  const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();
+}
+function applyGalleryMeta(item){
+  els.scenePrompt.value=item.scenePrompt??item.prompt??'';
+  els.extraNegative.value=item.extraNegative??item.negative??'';
+  if(item.presetId&&presets.some(p=>p.id===item.presetId)) els.presetSelect.value=item.presetId;
+  selectedAnchorIds=(item.anchorIds||[]).filter(id=>anchors.some(a=>a.id===id));
+  if(item.model) els.model.value=item.model;if(item.sampler)els.sampler.value=item.sampler;
+  if(item.width)els.width.value=item.width;if(item.height)els.height.value=item.height;
+  if(item.steps)els.steps.value=item.steps;if(item.cfg!=null)els.cfg.value=item.cfg;
+  els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
+  renderAnchorPicker();updateAssembly();showResult(item.blob,item.seed||'gallery');goView('workbench');
+}
+async function renderGallery(){
+  els.galleryGrid.innerHTML='';
+  try{
+    const items=await getGallery();els.galleryCount.textContent=`${items.length} 张 · 保存在此设备`;
+    if(!items.length){const note=document.createElement('div');note.className='empty-note';note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';els.galleryGrid.appendChild(note);return;}
+    for(const item of items){
+      const card=document.createElement('article');card.className='gallery-card';
+      const ib=document.createElement('button');ib.type='button';ib.className='gallery-image-btn';
+      const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);ib.addEventListener('click',()=>applyGalleryMeta(item));card.appendChild(ib);
+      const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
+      const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
+      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-by-isolde.png`:`nai-${item.id}-by-isolde.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+    }
+  }catch(e){console.warn(e);showToast('图库读取失败');}
+}
+
+async function exportGalleryZip(){
+  const btn = els.exportGalleryZipBtn;
+  if (!btn) return;
+  const originalLabel = btn.textContent;
+  btn.disabled = true;
+  btn.textContent = '正在打包…';
+  try{
+    const items = await getGallery();
+    if(!items.length){ showToast('图库还是空的'); return; }
+
+    const { zipSync, strToU8 } = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
+    const files = {};
+    const used = new Map();
+    const metadata = [];
+
+    const pad = (n) => String(n).padStart(2,'0');
+    const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
+
+    for(let i=0;i<items.length;i++){
+      const item = items[i];
+      const d = new Date(item.createdAt || Date.now());
+      const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+      const seed = safe(item.seed || 'noseed');
+      const preset = safe(item.presetName || 'nai');
+      const base = `${stamp}_${preset}_seed-${seed}`;
+      const count = used.get(base) || 0;
+      used.set(base, count + 1);
+      const name = `${base}${count ? `_${count+1}` : ''}.png`;
+      const bytes = new Uint8Array(await item.blob.arrayBuffer());
+      files[name] = bytes;
+
+      metadata.push({
+        file: name,
+        createdAt: item.createdAt || null,
+        seed: item.seed || '',
+        presetName: item.presetName || '',
+        model: item.model || '',
+        sampler: item.sampler || '',
+        width: item.width || null,
+        height: item.height || null,
+        steps: item.steps || null,
+        cfg: item.cfg ?? null,
+        prompt: item.assembledPrompt || item.scenePrompt || item.prompt || '',
+        negative: item.assembledNegative || item.extraNegative || item.negative || ''
+      });
+
+      btn.textContent = `正在打包 ${i+1}/${items.length}`;
+      if(i % 8 === 0) await new Promise(r => setTimeout(r,0));
+    }
+
+    files['metadata.json'] = strToU8(JSON.stringify(metadata, null, 2));
+    const zipped = zipSync(files, { level: 0 });
+    const blob = new Blob([zipped], { type:'application/zip' });
+    const url = URL.createObjectURL(blob);
+    const now = new Date();
+    const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `isolde-nai-gallery-${day}.zip`;
+    document.body.appendChild(a);
+a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 60000);
+    showToast(`已打包 ${items.length} 张图片`);
+  }catch(e){
+    console.error(e);
+    showToast((e?.message || String(e)).slice(0,180));
+  }finally{
+    btn.disabled = false;
+    btn.textContent = originalLabel;
+  }
+}
+
+async function clearGallery(){
+  if(!confirm('清空整个图库？图片会从这台设备的浏览器存储里删除。'))return;
+  const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();showToast('图库已清空');
+}
+
+els.tabs.forEach(b=>b.addEventListener('click',()=>goView(b.dataset.view)));
+els.presetSelect.addEventListener('change',()=>{settings.presetId=els.presetSelect.value;updateAssembly();});
+els.scenePrompt.addEventListener('input',updateAssembly);
+els.extraNegative.addEventListener('input',updateAssembly);
+els.qualityTags.addEventListener('input',updateAssembly);
+els.qualityPosition.addEventListener('change',updateAssembly);
+els.protectTextBlock.addEventListener('change',updateAssembly);
+els.aspect.addEventListener('change',()=>setAspect(els.aspect.value));
+for(const id of ['model','sampler','steps','cfg']) els[id].addEventListener('change',saveSettings);
+for(const id of ['width','height']) els[id].addEventListener('change',()=>{els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));saveSettings();});
+els.seed.addEventListener('change',saveSettings);
+els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els.extraNegative.value='';updateAssembly();els.scenePrompt.focus();});
+els.randomSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();saveSettings();});
+els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
+els.generateBtn.addEventListener('click',()=>generate());
+els.saveWatermarkedBtn?.addEventListener('click',async()=>{if(!currentResultBlob){showToast('还没有可保存的图片');return;}const old=els.saveWatermarkedBtn.textContent;els.saveWatermarkedBtn.disabled=true;els.saveWatermarkedBtn.textContent='加水印中…';try{await saveWatermarkedBlob(currentResultBlob,currentSeed?`nai-${currentSeed}-by-isolde.png`:`nai-${Date.now()}-by-isolde.png`);}catch(e){showToast(e?.message||'水印版生成失败');}finally{els.saveWatermarkedBtn.disabled=false;els.saveWatermarkedBtn.textContent=old;}});
+els.regenBtn.addEventListener('click',()=>{
+  const seed = currentSeed || els.seed.value.trim();
+  if(!seed){ showToast('当前没有固定 Seed'); return; }
+  generate({forceSeed:seed});
+});
+els.newSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();generate({forceSeed:els.seed.value});});
+
+els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
+els.presetForm.addEventListener('submit',(e)=>{
+  e.preventDefault();const name=els.presetName.value.trim();if(!name)return;
+  const id=els.presetId.value||uid('preset');const item={id,name,positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
+  const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
+  saveJson(PRESETS_KEY,presets);settings.presetId=id;renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();els.presetDialog.close();showToast('预设已保存');
+});
+els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
+els.anchorForm.addEventListener('submit',(e)=>{
+  e.preventDefault();const name=els.anchorName.value.trim();if(!name)return;
+  const id=els.anchorId.value||uid('anchor');const item={id,name,prompt:els.anchorPrompt.value.trim(),updatedAt:Date.now()};
+  const idx=anchors.findIndex(a=>a.id===id);if(idx>=0)anchors[idx]={...anchors[idx],...item};else anchors.unshift(item);
+  saveJson(ANCHORS_KEY,anchors);renderAnchors();updateAssembly();els.anchorDialog.close();showToast('角色锚点已保存');
+});
+document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.close)?.close()));
+
+els.apiFormat.addEventListener('change',()=>{updateEndpointUi();saveSettings();});
+els.toggleKeyBtn.addEventListener('click',()=>{const hidden=els.apiKey.type==='password';els.apiKey.type=hidden?'text':'password';els.toggleKeyBtn.textContent=hidden?'隐藏':'显示';});
+els.testBtn.addEventListener('click',testConnection);
+els.saveSettingsBtn.addEventListener('click',()=>{
+  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
+  catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
+});
+els.clearGalleryBtn.addEventListener('click',clearGallery);
+els.exportGalleryZipBtn?.addEventListener('click',exportGalleryZip);
+
+loadState();
+if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
