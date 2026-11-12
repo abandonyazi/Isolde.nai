@@ -25,6 +25,8 @@ const els = {
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
+  referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
+  vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
   toast: $('toast')
 };
 
@@ -39,6 +41,10 @@ let busy = false;
 let toastTimer = null;
 let currentWatermarkAsset = null;
 let watermarkPreviewUrl = null;
+let currentReferenceAsset = null;
+let currentVibeAsset = null;
+let referencePreviewUrl = null;
+let vibePreviewUrl = null;
 
 function uid(prefix='id') {
   if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
@@ -130,6 +136,17 @@ function loadState() {
   els.extraNegative.value = settings.extraNegative || '';
   els.watermarkOpacity.value = String(Number.isFinite(Number(settings.watermarkOpacity)) ? Math.max(0,Math.min(100,Number(settings.watermarkOpacity))) : 100);
   els.watermarkOpacityValue.textContent = `${els.watermarkOpacity.value}%`;
+  els.referenceEnabled.checked = settings.referenceEnabled === true;
+  els.referenceMode.value = ['character','style','character&style'].includes(settings.referenceMode) ? settings.referenceMode : 'character';
+  els.referenceStrength.value = String(clampNumber(settings.referenceStrength,0,1,.75));
+  els.referenceFidelity.value = String(clampNumber(settings.referenceFidelity,0,1,1));
+  els.referenceStrengthValue.textContent = Number(els.referenceStrength.value).toFixed(2);
+  els.referenceFidelityValue.textContent = Number(els.referenceFidelity.value).toFixed(2);
+  els.vibeEnabled.checked = settings.vibeEnabled === true;
+  els.vibeStrength.value = String(clampNumber(settings.vibeStrength,0,1,.6));
+  els.vibeInformation.value = String(clampNumber(settings.vibeInformation,.05,1,.7));
+  els.vibeStrengthValue.textContent = Number(els.vibeStrength.value).toFixed(2);
+  els.vibeInformationValue.textContent = Number(els.vibeInformation.value).toFixed(2);
   els.aspect.value = aspectFor(Number(els.width.value), Number(els.height.value));
   updateEndpointUi();
   renderPresetSelect();
@@ -155,6 +172,13 @@ function saveSettings() {
     scenePrompt: els.scenePrompt.value,
     extraNegative: els.extraNegative.value,
     watermarkOpacity: Number(els.watermarkOpacity.value),
+    referenceEnabled: els.referenceEnabled.checked,
+    referenceMode: els.referenceMode.value,
+    referenceStrength: Number(els.referenceStrength.value),
+    referenceFidelity: Number(els.referenceFidelity.value),
+    vibeEnabled: els.vibeEnabled.checked,
+    vibeStrength: Number(els.vibeStrength.value),
+    vibeInformation: Number(els.vibeInformation.value),
     presetId: els.presetSelect.value,
     selectedAnchorIds
   };
@@ -389,6 +413,7 @@ async function generate({forceSeed=null}={}) {
   const naiBody=buildNaiPayload(seed || null);
   busy=true; els.generateBtn.disabled=true; els.generateLabel.textContent='生成中'; els.generateSpinner.classList.remove('hidden'); setConnectionState('ready','正在生成…');
   try{
+    await applyReferenceFeatures(naiBody,endpoint,key);
     let blob;
     if(els.apiFormat.value==='nai'){
       const base=naiFetchBase(endpoint);
@@ -407,7 +432,10 @@ async function generate({forceSeed=null}={}) {
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
       model:els.model.value,sampler:els.sampler.value,width:Number(els.width.value),height:Number(els.height.value),
-      steps:Number(els.steps.value),cfg:Number(els.cfg.value),createdAt:Date.now()
+      steps:Number(els.steps.value),cfg:Number(els.cfg.value),
+      referenceEnabled:els.referenceEnabled.checked,referenceMode:els.referenceMode.value,referenceStrength:Number(els.referenceStrength.value),referenceFidelity:Number(els.referenceFidelity.value),referenceName:currentReferenceAsset?.name||'',
+      vibeEnabled:els.vibeEnabled.checked,vibeStrength:Number(els.vibeStrength.value),vibeInformation:Number(els.vibeInformation.value),vibeName:currentVibeAsset?.name||'',
+      createdAt:Date.now()
     });
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
   }catch(e){
@@ -537,6 +565,196 @@ async function refreshWatermarkUi(){
     els.watermarkPreviewWrap.classList.add('hidden');
   }
 }
+async function getLocalAsset(key){
+  const db=await openDb();
+  const item=await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readonly');
+    const req=tx.objectStore('assets').get(key);
+    req.onsuccess=()=>resolve(req.result||null);
+    req.onerror=()=>reject(req.error);
+  });
+  db.close();
+  return item;
+}
+async function putLocalAsset(key,file,extra={}){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readwrite');
+    tx.objectStore('assets').put({key,blob:file,name:file?.name||key,type:file?.type||'',updatedAt:Date.now(),...extra});
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function putAssetRecord(record){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readwrite');
+    tx.objectStore('assets').put(record);
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function removeLocalAsset(key){
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readwrite');
+    tx.objectStore('assets').delete(key);
+    tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);
+  });
+  db.close();
+}
+async function refreshReferenceUi(){
+  [currentReferenceAsset,currentVibeAsset]=await Promise.all([getLocalAsset('reference'),getLocalAsset('vibe')]);
+  if(referencePreviewUrl){URL.revokeObjectURL(referencePreviewUrl);referencePreviewUrl=null;}
+  if(vibePreviewUrl){URL.revokeObjectURL(vibePreviewUrl);vibePreviewUrl=null;}
+
+  const hasReference=Boolean(currentReferenceAsset?.blob);
+  els.removeReferenceBtn.disabled=!hasReference;
+  if(hasReference){
+    referencePreviewUrl=URL.createObjectURL(currentReferenceAsset.blob);
+    els.referencePreview.src=referencePreviewUrl;
+    els.referenceStatus.textContent=currentReferenceAsset.name||'Reference';
+    els.referencePreviewWrap.classList.remove('hidden');
+  }else{
+    els.referencePreview.removeAttribute('src');
+    els.referenceStatus.textContent='';
+    els.referencePreviewWrap.classList.add('hidden');
+    els.referenceEnabled.checked=false;
+  }
+
+  const hasVibe=Boolean(currentVibeAsset?.blob);
+  els.removeVibeBtn.disabled=!hasVibe;
+  if(hasVibe){
+    vibePreviewUrl=URL.createObjectURL(currentVibeAsset.blob);
+    els.vibePreview.src=vibePreviewUrl;
+    els.vibeStatus.textContent=currentVibeAsset.name||'Vibe';
+    els.vibePreviewWrap.classList.remove('hidden');
+  }else{
+    els.vibePreview.removeAttribute('src');
+    els.vibeStatus.textContent='';
+    els.vibePreviewWrap.classList.add('hidden');
+    els.vibeEnabled.checked=false;
+  }
+  updateReferenceModelHint();
+}
+function updateReferenceModelHint(){
+  const supported=els.model.value.startsWith('nai-diffusion-4-5');
+  els.referenceModelHint.textContent=supported?'V4.5 可用':'当前模型不支持';
+  els.referenceModelHint.classList.toggle('warning',!supported);
+}
+function blobToBase64(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>{
+      const value=String(reader.result||'');
+      const comma=value.indexOf(',');
+      resolve(comma>=0?value.slice(comma+1):value);
+    };
+    reader.onerror=()=>reject(reader.error||new Error('图片读取失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+function canvasToBlob(canvas){
+  return new Promise((resolve,reject)=>canvas.toBlob(blob=>blob?resolve(blob):reject(new Error('参考图处理失败')),'image/png'));
+}
+async function preparePreciseReference(blob){
+  const url=URL.createObjectURL(blob);
+  try{
+    const image=await loadCanvasImage(url);
+    const square=Math.abs(image.naturalWidth-image.naturalHeight)<=Math.max(image.naturalWidth,image.naturalHeight)*.04;
+    const target=square?[1472,1472]:(image.naturalWidth>image.naturalHeight?[1536,1024]:[1024,1536]);
+    const scale=Math.min(target[0]/image.naturalWidth,target[1]/image.naturalHeight);
+    const drawW=Math.max(1,Math.round(image.naturalWidth*scale));
+    const drawH=Math.max(1,Math.round(image.naturalHeight*scale));
+    const canvas=document.createElement('canvas');
+    canvas.width=target[0];canvas.height=target[1];
+    const ctx=canvas.getContext('2d');
+    if(!ctx) throw new Error('浏览器无法处理 Reference');
+    ctx.fillStyle='#000';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,Math.floor((canvas.width-drawW)/2),Math.floor((canvas.height-drawH)/2),drawW,drawH);
+    return await canvasToBlob(canvas);
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+async function sha256Hex(blob){
+  const digest=await crypto.subtle.digest('SHA-256',await blob.arrayBuffer());
+  return [...new Uint8Array(digest)].map(b=>b.toString(16).padStart(2,'0')).join('');
+}
+function bytesToBase64(bytes){
+  let binary='';
+  const chunk=0x8000;
+  for(let i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
+  return btoa(binary);
+}
+async function encodedVibeFor(blob,model,information,base,key){
+  const hash=await sha256Hex(blob);
+  const info=Number(information).toFixed(2);
+  const cacheKey=`vibe-cache:${hash}:${model}:${info}`;
+  const cached=await getLocalAsset(cacheKey);
+  if(cached?.encoding)return cached.encoding;
+
+  const image=await blobToBase64(blob);
+  const resp=await fetch(`${base}/ai/encode-vibe`,{
+    method:'POST',
+    headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/octet-stream'},
+    body:JSON.stringify({
+      image,
+      model,
+      information_extracted:Number(information),
+      crop_to_mask:false,
+      mask:'',
+      focus_seed:1,
+      info_extract_seed:1
+    })
+  });
+  const raw=new Uint8Array(await resp.arrayBuffer());
+  if(!resp.ok){
+    const message=new TextDecoder().decode(raw).slice(0,700).trim();
+    throw new Error(message||`Vibe 编码失败 ${resp.status}`);
+  }
+  const encoding=bytesToBase64(raw);
+  await putAssetRecord({key:cacheKey,encoding,updatedAt:Date.now(),model,information:Number(information)});
+  return encoding;
+}
+async function applyReferenceFeatures(naiBody,endpoint,key){
+  const useReference=els.referenceEnabled.checked;
+  const useVibe=els.vibeEnabled.checked;
+  if(!useReference&&!useVibe)return naiBody;
+  if(els.apiFormat.value!=='nai')throw new Error('Reference / Vibe 目前只支持 NovelAI 格式接口');
+  if(!naiBody.model.startsWith('nai-diffusion-4-5'))throw new Error('Reference / Vibe 目前只支持 NAI V4.5');
+  if(useReference&&useVibe)throw new Error('Precise Reference 和 Vibe 不能同时启用');
+
+  if(useReference){
+    const asset=currentReferenceAsset||await getLocalAsset('reference');
+    if(!asset?.blob)throw new Error('先添加 Reference 图片');
+    const prepared=await preparePreciseReference(asset.blob);
+    const image=await blobToBase64(prepared);
+    const fidelity=clampNumber(els.referenceFidelity.value,0,1,1);
+    naiBody.parameters.director_reference_images=[image];
+    naiBody.parameters.director_reference_descriptions=[{
+      caption:{base_caption:els.referenceMode.value,char_captions:[]},
+      legacy_uc:false
+    }];
+    naiBody.parameters.director_reference_information_extracted=[1];
+    naiBody.parameters.director_reference_strength_values=[clampNumber(els.referenceStrength.value,0,1,.75)];
+    naiBody.parameters.director_reference_secondary_strength_values=[1-fidelity];
+  }
+
+  if(useVibe){
+    const asset=currentVibeAsset||await getLocalAsset('vibe');
+    if(!asset?.blob)throw new Error('先添加 Vibe 图片');
+    const base=naiFetchBase(endpoint);
+    const info=clampNumber(els.vibeInformation.value,.05,1,.7);
+    const encoded=await encodedVibeFor(asset.blob,naiBody.model,info,base,key);
+    naiBody.parameters.reference_image_multiple=[encoded];
+    naiBody.parameters.reference_strength_multiple=[clampNumber(els.vibeStrength.value,0,1,.6)];
+    naiBody.parameters.reference_information_extracted_multiple=[info];
+    naiBody.parameters.normalize_reference_strength_multiple=true;
+  }
+  return naiBody;
+}
 async function addGallery(blob,meta){
   const db=await openDb();
   await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').add({blob,...meta});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
@@ -556,8 +774,21 @@ function applyGalleryMeta(item){
   if(item.model) els.model.value=item.model;if(item.sampler)els.sampler.value=item.sampler;
   if(item.width)els.width.value=item.width;if(item.height)els.height.value=item.height;
   if(item.steps)els.steps.value=item.steps;if(item.cfg!=null)els.cfg.value=item.cfg;
+  if(item.referenceMode)els.referenceMode.value=item.referenceMode;
+  if(item.referenceStrength!=null)els.referenceStrength.value=String(item.referenceStrength);
+  if(item.referenceFidelity!=null)els.referenceFidelity.value=String(item.referenceFidelity);
+  if(item.vibeStrength!=null)els.vibeStrength.value=String(item.vibeStrength);
+  if(item.vibeInformation!=null)els.vibeInformation.value=String(item.vibeInformation);
+  els.referenceStrengthValue.textContent=Number(els.referenceStrength.value).toFixed(2);
+  els.referenceFidelityValue.textContent=Number(els.referenceFidelity.value).toFixed(2);
+  els.vibeStrengthValue.textContent=Number(els.vibeStrength.value).toFixed(2);
+  els.vibeInformationValue.textContent=Number(els.vibeInformation.value).toFixed(2);
+  els.referenceEnabled.checked=Boolean(item.referenceEnabled&&currentReferenceAsset?.blob);
+  els.vibeEnabled.checked=Boolean(item.vibeEnabled&&currentVibeAsset?.blob);
+  if(item.referenceEnabled&&!currentReferenceAsset?.blob)showToast('这张图当时用了 Reference，但当前设备没有对应参考图');
+  if(item.vibeEnabled&&!currentVibeAsset?.blob)showToast('这张图当时用了 Vibe，但当前设备没有对应 Vibe 图');
   els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
-renderAnchorPicker();updateAssembly();showResult(item.blob,item.seed||'gallery');goView('workbench');
+renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.seed||'gallery');goView('workbench');
 }
 async function renderGallery(){
   els.galleryGrid.innerHTML='';
@@ -617,6 +848,15 @@ async function exportGalleryZip(){
         height: item.height || null,
         steps: item.steps || null,
         cfg: item.cfg ?? null,
+        referenceEnabled: Boolean(item.referenceEnabled),
+        referenceMode: item.referenceMode || '',
+        referenceStrength: item.referenceStrength ?? null,
+        referenceFidelity: item.referenceFidelity ?? null,
+        referenceName: item.referenceName || '',
+        vibeEnabled: Boolean(item.vibeEnabled),
+        vibeStrength: item.vibeStrength ?? null,
+        vibeInformation: item.vibeInformation ?? null,
+        vibeName: item.vibeName || '',
         prompt: item.assembledPrompt || item.scenePrompt || item.prompt || '',
         negative: item.assembledNegative || item.extraNegative || item.negative || ''
       });
@@ -661,7 +901,8 @@ els.qualityTags.addEventListener('input',updateAssembly);
 els.qualityPosition.addEventListener('change',updateAssembly);
 els.protectTextBlock.addEventListener('change',updateAssembly);
 els.aspect.addEventListener('change',()=>setAspect(els.aspect.value));
-for(const id of ['model','sampler','steps','cfg']) els[id].addEventListener('change',saveSettings);
+for(const id of ['sampler','steps','cfg']) els[id].addEventListener('change',saveSettings);
+els.model.addEventListener('change',()=>{updateReferenceModelHint();saveSettings();});
 for(const id of ['width','height']) els[id].addEventListener('change',()=>{els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));saveSettings();});
 els.seed.addEventListener('change',saveSettings);
 els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els.extraNegative.value='';updateAssembly();els.scenePrompt.focus();});
@@ -746,6 +987,75 @@ els.removeWatermarkBtn?.addEventListener('click',async()=>{
     showToast('移除水印失败');
   }
 });
+els.uploadReferenceBtn?.addEventListener('click',()=>els.referenceFile?.click());
+els.referenceFile?.addEventListener('change',async()=>{
+  const file=els.referenceFile.files?.[0];
+  if(!file)return;
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)){showToast('Reference 请选择 PNG、JPG 或 WebP');els.referenceFile.value='';return;}
+  if(file.size>10*1024*1024){showToast('Reference 请控制在 10MB 以内');els.referenceFile.value='';return;}
+  try{
+    await putLocalAsset('reference',file);
+    await refreshReferenceUi();
+    els.referenceEnabled.checked=true;
+    els.vibeEnabled.checked=false;
+    saveSettings();
+    showToast('Reference 已添加');
+  }catch(e){console.error(e);showToast('Reference 保存失败');}
+  finally{els.referenceFile.value='';}
+});
+els.removeReferenceBtn?.addEventListener('click',async()=>{
+  try{
+    await removeLocalAsset('reference');
+    els.referenceEnabled.checked=false;
+    await refreshReferenceUi();
+    saveSettings();
+    showToast('Reference 已移除');
+  }catch(e){console.error(e);showToast('Reference 移除失败');}
+});
+els.uploadVibeBtn?.addEventListener('click',()=>els.vibeFile?.click());
+els.vibeFile?.addEventListener('change',async()=>{
+  const file=els.vibeFile.files?.[0];
+  if(!file)return;
+  if(!['image/png','image/jpeg','image/webp'].includes(file.type)){showToast('Vibe 请选择 PNG、JPG 或 WebP');els.vibeFile.value='';return;}
+  if(file.size>10*1024*1024){showToast('Vibe 请控制在 10MB 以内');els.vibeFile.value='';return;}
+  try{
+    await putLocalAsset('vibe',file);
+    await refreshReferenceUi();
+    els.vibeEnabled.checked=true;
+    els.referenceEnabled.checked=false;
+    saveSettings();
+    showToast('Vibe 已添加');
+  }catch(e){console.error(e);showToast('Vibe 保存失败');}
+  finally{els.vibeFile.value='';}
+});
+els.removeVibeBtn?.addEventListener('click',async()=>{
+  try{
+    await removeLocalAsset('vibe');
+    els.vibeEnabled.checked=false;
+    await refreshReferenceUi();
+    saveSettings();
+    showToast('Vibe 已移除');
+  }catch(e){console.error(e);showToast('Vibe 移除失败');}
+});
+els.referenceEnabled?.addEventListener('change',()=>{
+  if(els.referenceEnabled.checked){
+    if(!currentReferenceAsset?.blob){els.referenceEnabled.checked=false;showToast('先添加 Reference 图片');return;}
+    if(els.vibeEnabled.checked){els.vibeEnabled.checked=false;showToast('已关闭 Vibe：两者不能同时启用');}
+  }
+  saveSettings();
+});
+els.vibeEnabled?.addEventListener('change',()=>{
+  if(els.vibeEnabled.checked){
+    if(!currentVibeAsset?.blob){els.vibeEnabled.checked=false;showToast('先添加 Vibe 图片');return;}
+    if(els.referenceEnabled.checked){els.referenceEnabled.checked=false;showToast('已关闭 Reference：两者不能同时启用');}
+  }
+  saveSettings();
+});
+els.referenceMode?.addEventListener('change',saveSettings);
+for(const [input,value] of [[els.referenceStrength,els.referenceStrengthValue],[els.referenceFidelity,els.referenceFidelityValue],[els.vibeStrength,els.vibeStrengthValue],[els.vibeInformation,els.vibeInformationValue]]){
+  input?.addEventListener('input',()=>{value.textContent=Number(input.value).toFixed(2);});
+  input?.addEventListener('change',saveSettings);
+}
 els.watermarkOpacity?.addEventListener('input',()=>{
   els.watermarkOpacityValue.textContent=`${els.watermarkOpacity.value}%`;
 });
@@ -753,4 +1063,5 @@ els.watermarkOpacity?.addEventListener('change',saveSettings);
 
 loadState();
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
+refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
 if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
