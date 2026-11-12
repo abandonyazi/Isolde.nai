@@ -19,7 +19,7 @@ Settings, character anchors, prompt presets, API tokens, and gallery data are st
 
 ## Hosting
 
-This repository is a static web app and can be hosted with GitHub Pages or another static host. The optional `/nai-api/` reverse proxy used for direct NovelAI access must be provided separately by the host.
+This repository is a static web app hosted on GitHub Pages. Direct NovelAI access is proxied through the included Cloudflare Worker at `cloudflare-worker/`.
 
 No API token is included in the source code.
 
