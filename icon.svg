@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <defs>
+    <linearGradient id="bg" x1="110" y1="70" x2="914" y2="950" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#eef5fa"/>
+      <stop offset="0.52" stop-color="#c9ddea"/>
+      <stop offset="1" stop-color="#8faec7"/>
+    </linearGradient>
+    <linearGradient id="a" x1="355" y1="250" x2="670" y2="790" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#365773"/>
+      <stop offset="1" stop-color="#5f86a4"/>
+    </linearGradient>
+    <filter id="blur" x="-30%" y="-30%" width="160%" height="160%">
+      <feGaussianBlur stdDeviation="28"/>
+    </filter>
+  </defs>
+
+  <rect width="1024" height="1024" rx="238" fill="url(#bg)"/>
+
+  <path d="M76 748C254 614 394 616 525 672C663 731 760 726 948 594"
+        fill="none" stroke="#ffffff" stroke-width="70" stroke-linecap="round" opacity=".26" filter="url(#blur)"/>
+  <path d="M102 285C274 192 414 215 526 287C647 365 772 363 921 250"
+        fill="none" stroke="#ffffff" stroke-width="42" stroke-linecap="round" opacity=".20"/>
+
+  <path d="M297 742L485 295C499 261 523 242 552 242C579 242 601 259 615 291L789 742H672L629 622H453L405 742H297ZM492 522H593L546 391L492 522Z"
+        fill="url(#a)" fill-rule="evenodd"/>
+
+  <path d="M613 274L684 215" stroke="#ffffff" stroke-width="18" stroke-linecap="round" opacity=".88"/>
+  <circle cx="706" cy="197" r="14" fill="#ffffff" opacity=".92"/>
+  <circle cx="756" cy="236" r="8" fill="#ffffff" opacity=".62"/>
+</svg>
