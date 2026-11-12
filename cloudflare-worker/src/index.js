@@ -5,6 +5,7 @@ const ALLOWED_ORIGINS = new Set([
 const ROUTES = new Map([
   ["/user/subscription", new Set(["GET"])],
   ["/ai/generate-image", new Set(["POST"])],
+  ["/ai/encode-vibe", new Set(["POST"])],
 ]);
 
 function cors(origin) {
