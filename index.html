@@ -165,100 +165,6 @@
         </label>
       </section>
 
-      <section class="card reference-card">
-        <div class="section-head">
-          <div>
-            <p class="kicker">Reference</p>
-            <h2>参考图与 Vibe</h2>
-          </div>
-          <span id="referenceModelHint" class="subtle compact-note">仅 V4.5</span>
-        </div>
-
-        <div class="reference-grid">
-          <section class="reference-panel">
-            <div class="reference-panel-head">
-              <div>
-                <strong>Precise Reference</strong>
-                <p>控制人物、画风或两者。</p>
-              </div>
-              <label class="mini-switch">
-                <input id="referenceEnabled" type="checkbox" />
-                <span>启用</span>
-              </label>
-            </div>
-
-            <input id="referenceFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp" />
-            <div class="reference-actions">
-              <button id="uploadReferenceBtn" class="secondary-btn" type="button">添加 Reference</button>
-              <button id="removeReferenceBtn" class="text-btn danger" type="button" disabled>移除</button>
-            </div>
-
-            <div id="referencePreviewWrap" class="reference-preview hidden">
-              <img id="referencePreview" alt="Reference 预览" />
-              <span id="referenceStatus"></span>
-            </div>
-
-            <label class="field compact-field">
-              <span>用途</span>
-              <select id="referenceMode">
-                <option value="character">人物</option>
-                <option value="style">画风</option>
-                <option value="character&style">人物 + 画风</option>
-              </select>
-            </label>
-
-            <label class="reference-slider">
-              <span>Strength</span>
-              <input id="referenceStrength" type="range" min="0" max="1" step="0.05" value="0.75" />
-              <strong id="referenceStrengthValue">0.75</strong>
-            </label>
-
-            <label class="reference-slider">
-              <span>Fidelity</span>
-              <input id="referenceFidelity" type="range" min="0" max="1" step="0.05" value="1" />
-              <strong id="referenceFidelityValue">1.00</strong>
-            </label>
-          </section>
-
-          <section class="reference-panel">
-            <div class="reference-panel-head">
-              <div>
-                <strong>Vibe Transfer</strong>
-                <p>提取配色、质感与整体气氛。</p>
-              </div>
-              <label class="mini-switch">
-                <input id="vibeEnabled" type="checkbox" />
-                <span>启用</span>
-              </label>
-            </div>
-
-            <input id="vibeFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp" />
-            <div class="reference-actions">
-              <button id="uploadVibeBtn" class="secondary-btn" type="button">添加 Vibe</button>
-              <button id="removeVibeBtn" class="text-btn danger" type="button" disabled>移除</button>
-            </div>
-
-            <div id="vibePreviewWrap" class="reference-preview hidden">
-              <img id="vibePreview" alt="Vibe 预览" />
-              <span id="vibeStatus"></span>
-            </div>
-
-            <label class="reference-slider">
-              <span>Strength</span>
-              <input id="vibeStrength" type="range" min="0" max="1" step="0.05" value="0.6" />
-              <strong id="vibeStrengthValue">0.60</strong>
-            </label>
-
-            <label class="reference-slider">
-              <span>Information</span>
-              <input id="vibeInformation" type="range" min="0.05" max="1" step="0.05" value="0.7" />
-              <strong id="vibeInformationValue">0.70</strong>
-            </label>
-            <p class="reference-note">同一张图 + 同一 Information 会缓存编码，避免重复付 Vibe 编码费。</p>
-          </section>
-        </div>
-      </section>
-
       <section class="result-area">
         <div id="emptyResult" class="empty-result">
           <div class="empty-orb">✦</div>
@@ -358,6 +264,100 @@
         <div class="settings-actions">
           <button id="testBtn" class="secondary-btn" type="button">测试连接</button>
           <button id="saveSettingsBtn" class="primary-btn" type="button">保存设置</button>
+        </div>
+
+        <div class="settings-subsection">
+          <div class="section-head">
+            <div>
+              <p class="kicker">Reference</p>
+              <h2>参考图与 Vibe</h2>
+            </div>
+            <span id="referenceModelHint" class="subtle compact-note">仅 V4.5</span>
+          </div>
+
+          <div class="reference-grid">
+            <section class="reference-panel">
+              <div class="reference-panel-head">
+                <div>
+                  <strong>Precise Reference</strong>
+                  <p>控制人物、画风或两者。</p>
+                </div>
+                <label class="mini-switch">
+                  <input id="referenceEnabled" type="checkbox" />
+                  <span>启用</span>
+                </label>
+              </div>
+
+              <input id="referenceFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp" />
+              <div class="reference-actions">
+                <button id="uploadReferenceBtn" class="secondary-btn" type="button">添加 Reference</button>
+                <button id="removeReferenceBtn" class="text-btn danger" type="button" disabled>移除</button>
+              </div>
+
+              <div id="referencePreviewWrap" class="reference-preview hidden">
+                <img id="referencePreview" alt="Reference 预览" />
+                <span id="referenceStatus"></span>
+              </div>
+
+              <label class="field compact-field">
+                <span>用途</span>
+                <select id="referenceMode">
+                  <option value="character">人物</option>
+                  <option value="style">画风</option>
+                  <option value="character&style">人物 + 画风</option>
+                </select>
+              </label>
+
+              <label class="reference-slider">
+                <span>Strength</span>
+                <input id="referenceStrength" type="range" min="0" max="1" step="0.05" value="0.75" />
+                <strong id="referenceStrengthValue">0.75</strong>
+              </label>
+
+              <label class="reference-slider">
+                <span>Fidelity</span>
+                <input id="referenceFidelity" type="range" min="0" max="1" step="0.05" value="1" />
+                <strong id="referenceFidelityValue">1.00</strong>
+              </label>
+            </section>
+
+            <section class="reference-panel">
+              <div class="reference-panel-head">
+                <div>
+                  <strong>Vibe Transfer</strong>
+                  <p>提取配色、质感与整体气氛。</p>
+                </div>
+                <label class="mini-switch">
+                  <input id="vibeEnabled" type="checkbox" />
+                  <span>启用</span>
+                </label>
+              </div>
+
+              <input id="vibeFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp" />
+              <div class="reference-actions">
+                <button id="uploadVibeBtn" class="secondary-btn" type="button">添加 Vibe</button>
+                <button id="removeVibeBtn" class="text-btn danger" type="button" disabled>移除</button>
+              </div>
+
+              <div id="vibePreviewWrap" class="reference-preview hidden">
+                <img id="vibePreview" alt="Vibe 预览" />
+                <span id="vibeStatus"></span>
+              </div>
+
+              <label class="reference-slider">
+                <span>Strength</span>
+                <input id="vibeStrength" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <strong id="vibeStrengthValue">0.60</strong>
+              </label>
+
+              <label class="reference-slider">
+                <span>Information</span>
+                <input id="vibeInformation" type="range" min="0.05" max="1" step="0.05" value="0.7" />
+                <strong id="vibeInformationValue">0.70</strong>
+              </label>
+              <p class="reference-note">同一张图 + 同一 Information 会缓存编码，避免重复付 Vibe 编码费。</p>
+            </section>
+          </div>
         </div>
 
         <div class="watermark-box">
