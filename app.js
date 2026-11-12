@@ -2,6 +2,7 @@ const $ = (id) => document.getElementById(id);
 const OFFICIAL_BASE = 'https://image.novelai.net';
 const NAI_PROXY_BASE = 'https://isolde-nai-proxy.abandonyazi.workers.dev';
 const SETTINGS_KEY = 'isolde_nai_settings_v2';
+const TOKEN_KEY = 'isolde_nai_token_v1';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
 const DB_NAME = 'isolde-nai-gallery';
@@ -57,6 +58,17 @@ function loadJson(key, fallback) {
   try { return JSON.parse(localStorage.getItem(key) || '') || fallback; } catch { return fallback; }
 }
 function saveJson(key, value) { localStorage.setItem(key, JSON.stringify(value)); }
+function loadSavedToken() {
+  return String(localStorage.getItem(TOKEN_KEY) || '').trim();
+}
+function saveTokenPreference() {
+  const token = els.apiKey.value.trim();
+  if (els.rememberKey.checked) {
+    if (token) localStorage.setItem(TOKEN_KEY, token);
+  } else {
+    localStorage.removeItem(TOKEN_KEY);
+  }
+}
 function showToast(message) {
   els.toast.textContent = message;
   els.toast.classList.add('show');
@@ -123,8 +135,15 @@ function loadState() {
   selectedAnchorIds = Array.isArray(settings.selectedAnchorIds) ? settings.selectedAnchorIds : [];
   els.apiFormat.value = settings.apiFormat || 'nai';
   els.endpoint.value = settings.endpoint || OFFICIAL_BASE;
-  els.apiKey.value = settings.rememberKey === false ? '' : (settings.apiKey || '');
+  const legacyToken = settings.rememberKey === false ? '' : String(settings.apiKey || '').trim();
+  const savedToken = loadSavedToken() || legacyToken;
+  els.apiKey.value = savedToken;
   els.rememberKey.checked = settings.rememberKey !== false;
+  if (!loadSavedToken() && legacyToken) localStorage.setItem(TOKEN_KEY, legacyToken);
+  if (Object.prototype.hasOwnProperty.call(settings, 'apiKey')) {
+    delete settings.apiKey;
+    saveJson(SETTINGS_KEY, settings);
+  }
   els.model.value = settings.model || 'nai-diffusion-5-full';
   els.sampler.value = settings.sampler || 'k_euler_ancestral';
   els.width.value = settings.width || 1024;
@@ -160,12 +179,12 @@ function loadState() {
   else setConnectionState('', 'NAI 官网 · 等待 Token');
 }
 function saveSettings() {
+  const { apiKey: _legacyApiKey, ...safeSettings } = settings;
   settings = {
-    ...settings,
+    ...safeSettings,
     apiFormat: els.apiFormat.value,
     endpoint: els.endpoint.value.trim() || OFFICIAL_BASE,
     rememberKey: els.rememberKey.checked,
-    apiKey: els.rememberKey.checked ? els.apiKey.value.trim() : '',
     model: els.model.value, sampler: els.sampler.value,
     width: Number(els.width.value), height: Number(els.height.value),
     steps: Number(els.steps.value), cfg: Number(els.cfg.value),
@@ -1443,7 +1462,7 @@ els.apiFormat.addEventListener('change',()=>{updateEndpointUi();saveSettings();}
 els.toggleKeyBtn.addEventListener('click',()=>{const hidden=els.apiKey.type==='password';els.apiKey.type=hidden?'text':'password';els.toggleKeyBtn.textContent=hidden?'隐藏':'显示';});
 els.testBtn.addEventListener('click',testConnection);
 els.saveSettingsBtn.addEventListener('click',()=>{
-  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
+  try{normalizedEndpoint(els.apiFormat.value,els.endpoint.value);if(!els.apiKey.value.trim())throw new Error('Token 还是空的');saveTokenPreference();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
   catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
