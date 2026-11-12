@@ -266,6 +266,22 @@
           <button id="saveSettingsBtn" class="primary-btn" type="button">保存设置</button>
         </div>
 
+        <div class="watermark-box">
+          <div>
+            <strong>下载水印</strong>
+            <p>默认不使用水印。上传后，「保存水印版」才会叠加这张图片；水印只保存在这台设备。</p>
+          </div>
+          <input id="watermarkFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp,image/svg+xml" />
+          <div class="watermark-actions">
+            <button id="uploadWatermarkBtn" class="secondary-btn" type="button">上传水印</button>
+            <button id="removeWatermarkBtn" class="text-btn danger" type="button" disabled>移除水印</button>
+          </div>
+          <div id="watermarkPreviewWrap" class="watermark-preview hidden">
+            <img id="watermarkPreview" alt="当前水印预览" />
+            <span id="watermarkStatus"></span>
+          </div>
+        </div>
+
         <div class="export-box">
           <div>
             <strong>图库备份</strong>
@@ -326,6 +342,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=19"></script>
+  <script type="module" src="./app.js?v=20"></script>
 </body>
 </html>
