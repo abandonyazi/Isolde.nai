@@ -1,0 +1,13 @@
+{
+  "name": "Isolde NAI",
+  "short_name": "Isolde NAI",
+  "description": "A lightweight NovelAI mobile client for iOS/PWA.",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "background_color": "#f3f7fb",
+  "theme_color": "#f3f7fb",
+  "icons": [
+    { "src": "./icon.svg?v=15", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}
