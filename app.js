@@ -627,9 +627,176 @@ async function renderVibePresets(selectedKey=''){
   if(previous&&items.some(item=>item.key===previous))els.vibePresetSelect.value=previous;
   els.deleteVibePresetBtn.disabled=!els.vibePresetSelect.value;
 }
+function vibeAssetUsable(asset){
+  if(!asset)return false;
+  if(asset.blob instanceof Blob)return true;
+  const buckets=asset.encodings&&typeof asset.encodings==='object'?Object.values(asset.encodings):[];
+  return buckets.some(list=>Array.isArray(list)&&list.some(item=>typeof item?.encoding==='string'&&item.encoding.length>64));
+}
+function base64Payload(value){
+  const text=String(value||'').trim();
+  if(!text)return '';
+  return text.startsWith('data:')&&text.includes(',')?text.slice(text.indexOf(',')+1):text;
+}
+function base64ToBlob(value){
+  try{
+    const raw=atob(base64Payload(value));
+    if(raw.length<4)return null;
+    const bytes=new Uint8Array(raw.length);
+    for(let i=0;i<raw.length;i++)bytes[i]=raw.charCodeAt(i);
+    let type='application/octet-stream';
+    if(bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47)type='image/png';
+    else if(bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)type='image/jpeg';
+    else if(bytes[0]===0x52&&bytes[1]===0x49&&bytes[2]===0x46&&bytes[3]===0x46)type='image/webp';
+    else return null;
+    return new Blob([bytes],{type});
+  }catch{return null;}
+}
+function modelFromVibeKey(key){
+  const map={
+    'v4-5full':'nai-diffusion-4-5-full',
+    'v4-5curated':'nai-diffusion-4-5-curated',
+    'v4full':'nai-diffusion-4-full',
+    'v4curated':'nai-diffusion-4-curated-preview',
+    'nai-diffusion-4-5-full':'nai-diffusion-4-5-full',
+    'nai-diffusion-4-5-curated':'nai-diffusion-4-5-curated',
+    'nai-diffusion-4-full':'nai-diffusion-4-full',
+    'nai-diffusion-4-curated-preview':'nai-diffusion-4-curated-preview'
+  };
+  return map[String(key||'').trim()]||String(key||'').trim();
+}
+function normalizeEncodingBuckets(encodings){
+  const out={};
+  if(!encodings||typeof encodings!=='object')return out;
+  for(const [rawKey,bucket] of Object.entries(encodings)){
+    const model=modelFromVibeKey(rawKey);
+    const list=[];
+    if(typeof bucket==='string'){
+      if(bucket.length>64)list.push({encoding:base64Payload(bucket),information:null});
+    }else if(Array.isArray(bucket)){
+      for(const item of bucket){
+        if(typeof item==='string'&&item.length>64)list.push({encoding:base64Payload(item),information:null});
+        else if(item&&typeof item==='object'){
+          const encoding=base64Payload(item.encoding||item.data||item.reference_image||'');
+          const information=Number(item.information_extracted??item.information??item.info);
+          if(encoding.length>64)list.push({encoding,information:Number.isFinite(information)?information:null});
+        }
+      }
+    }else if(bucket&&typeof bucket==='object'){
+      for(const value of Object.values(bucket)){
+        if(typeof value==='string'&&value.length>64)list.push({encoding:base64Payload(value),information:null});
+        else if(value&&typeof value==='object'){
+          const encoding=base64Payload(value.encoding||value.data||value.reference_image||'');
+          const information=Number((value.params||{}).information_extracted??value.information_extracted??value.information??value.info);
+          if(encoding.length>64)list.push({encoding,information:Number.isFinite(information)?information:null});
+        }
+      }
+    }
+    if(list.length)out[model]=list;
+  }
+  return out;
+}
+function pushDirectArrayEntries(out,obj,nameBase){
+  if(!obj||typeof obj!=='object')return;
+  const refs=Array.isArray(obj.reference_image_multiple)?obj.reference_image_multiple:[];
+  if(!refs.length)return;
+  const strengths=Array.isArray(obj.reference_strength_multiple)?obj.reference_strength_multiple:[];
+  const infos=Array.isArray(obj.reference_information_extracted_multiple)?obj.reference_information_extracted_multiple:[];
+  refs.forEach((raw,i)=>{
+    const encoding=base64Payload(raw);
+    if(encoding.length<=64)return;
+    const strength=clampNumber(strengths[i],0,1,.6);
+    const information=clampNumber(infos[i],.05,1,.7);
+    out.push({
+      name:refs.length>1?`${nameBase} ${i+1}`:nameBase,
+      strength,information,
+      encodings:{
+        'nai-diffusion-4-5-full':[{encoding,information}],
+        'nai-diffusion-4-5-curated':[{encoding,information}]
+      }
+    });
+  });
+}
+function parseVibeDocument(doc,fileName='Vibe'){
+  const base=fileName.replace(/\.(?:json|naiv4vibe|naiv4vibebundle)$/i,'')||'Vibe';
+  const out=[];
+  const documents=Array.isArray(doc)?doc:(Array.isArray(doc?.vibes)?doc.vibes:[doc]);
+  for(let idx=0;idx<documents.length;idx++){
+    const one=documents[idx];
+    if(!one||typeof one!=='object')continue;
+    const importInfo=one.importInfo&&typeof one.importInfo==='object'?one.importInfo:{};
+    const strength=clampNumber(importInfo.strength??one.strength,0,1,.6);
+    const information=clampNumber(importInfo.information_extracted??one.information_extracted??one.information,.05,1,.7);
+    const encodings=normalizeEncodingBuckets(one.encodings);
+    const imageBlob=base64ToBlob(one.image||'');
+    const previewBlob=imageBlob||base64ToBlob(one.thumbnail||'');
+    if(Object.keys(encodings).length){
+      out.push({
+        name:String(one.name||(`${base}${documents.length>1?` ${idx+1}`:''}`)),
+        strength,information,encodings,
+        blob:imageBlob,previewBlob,
+        fileName:fileName
+      });
+      continue;
+    }
+    const direct=one.parameters&&typeof one.parameters==='object'?one.parameters:one;
+    const before=out.length;
+    pushDirectArrayEntries(out,direct,String(one.name||base));
+    if(out.length>before)continue;
+    const single=base64Payload(one.encoding||one.vibe_encoding||one.reference_image||one.data||'');
+    if(single.length>64){
+      const model=modelFromVibeKey(importInfo.model||one.model||'nai-diffusion-4-5-full');
+      out.push({
+        name:String(one.name||base),
+        strength,information,
+        encodings:{[model]:[{encoding:single,information}]},
+        blob:imageBlob,previewBlob,fileName
+      });
+    }
+  }
+  if(!out.length&&doc?.parameters&&typeof doc.parameters==='object')pushDirectArrayEntries(out,doc.parameters,base);
+  return out;
+}
+function vibeEncodingFor(asset,model,information){
+  const list=asset?.encodings?.[model];
+  if(!Array.isArray(list)||!list.length)return null;
+  const want=Number(information);
+  let exact=list.find(item=>item.information==null||Math.abs(Number(item.information)-want)<0.001);
+  if(!exact&&list.length===1&&list[0].information==null)exact=list[0];
+  return exact?.encoding||null;
+}
+async function importVibeDocumentFile(file){
+  const text=(await file.text()).replace(/^\uFEFF/,'');
+  let doc;
+  try{doc=JSON.parse(text);}catch{throw new Error('这个 Vibe / JSON 文件不是有效 JSON');}
+  const entries=parseVibeDocument(doc,file.name||'Vibe');
+  if(!entries.length)throw new Error('没识别到可用的 Vibe 编码');
+  const keys=[];
+  for(const entry of entries){
+    const key=`vibe-preset:${uid('vibe')}`;
+    await putAssetRecord({
+      key,
+      name:entry.name,
+      blob:entry.blob||null,
+      previewBlob:entry.previewBlob||null,
+      fileName:entry.fileName||file.name||'vibe',
+      type:file.type||'application/json',
+      strength:entry.strength,
+      information:entry.information,
+      encodings:entry.encodings,
+      imported:true,
+      updatedAt:Date.now()
+    });
+    keys.push(key);
+  }
+  await renderVibePresets(keys[0]);
+  await applyVibePreset(keys[0]);
+  if(entries.length>1)showToast(`已导入 ${entries.length} 个 Vibe，全部存进预设`);
+  else showToast('Vibe 文件已导入');
+}
 async function saveCurrentVibePreset(){
   const asset=currentVibeAsset||await getLocalAsset('vibe');
-  if(!asset?.blob){showToast('先添加一张 Vibe 图片');return;}
+  if(!vibeAssetUsable(asset)){showToast('先添加或导入一个 Vibe');return;}
   const fallback=(asset.name||'Vibe').replace(/\.[^.]+$/,'');
   const name=prompt('给这个 Vibe 预设起个名字',fallback);
   if(name===null)return;
@@ -639,9 +806,11 @@ async function saveCurrentVibePreset(){
   await putAssetRecord({
     key,
     name:clean,
-    blob:asset.blob,
-    fileName:asset.name||'vibe',
-    type:asset.type||asset.blob.type||'',
+    blob:asset.blob||null,
+    previewBlob:asset.previewBlob||null,
+    encodings:asset.encodings||null,
+    fileName:asset.name||asset.fileName||'vibe',
+    type:asset.type||asset.blob?.type||'',
     strength:clampNumber(els.vibeStrength.value,0,1,.6),
     information:clampNumber(els.vibeInformation.value,.05,1,.7),
     updatedAt:Date.now()
@@ -652,12 +821,14 @@ async function saveCurrentVibePreset(){
 async function applyVibePreset(key){
   if(!key){els.deleteVibePresetBtn.disabled=true;return;}
   const preset=await getLocalAsset(key);
-  if(!preset?.blob){showToast('这个 Vibe 预设已不存在');await renderVibePresets();return;}
+  if(!vibeAssetUsable(preset)){showToast('这个 Vibe 预设已不存在');await renderVibePresets();return;}
   await putAssetRecord({
     key:'vibe',
-    blob:preset.blob,
+    blob:preset.blob||null,
+    previewBlob:preset.previewBlob||null,
+    encodings:preset.encodings||null,
     name:preset.fileName||preset.name||'vibe',
-    type:preset.type||preset.blob.type||'',
+    type:preset.type||preset.blob?.type||'',
     updatedAt:Date.now()
   });
   els.vibeStrength.value=String(clampNumber(preset.strength,0,1,.6));
@@ -701,15 +872,22 @@ async function refreshReferenceUi(){
     els.referenceEnabled.checked=false;
   }
 
-  const hasVibe=Boolean(currentVibeAsset?.blob);
+  const hasVibe=vibeAssetUsable(currentVibeAsset);
   els.removeVibeBtn.disabled=!hasVibe;
   if(hasVibe){
-    vibePreviewUrl=URL.createObjectURL(currentVibeAsset.blob);
-    els.vibePreview.src=vibePreviewUrl;
-    els.vibeStatus.textContent=currentVibeAsset.name||'Vibe';
+    const preview=currentVibeAsset.blob||currentVibeAsset.previewBlob||null;
+    if(preview){
+      vibePreviewUrl=URL.createObjectURL(preview);
+      els.vibePreview.src=vibePreviewUrl;
+    }else{
+      els.vibePreview.removeAttribute('src');
+    }
+    els.vibePreview.style.display=preview?'block':'none';
+    els.vibeStatus.textContent=currentVibeAsset.name||'已导入 Vibe 编码';
     els.vibePreviewWrap.classList.remove('hidden');
   }else{
     els.vibePreview.removeAttribute('src');
+    els.vibePreview.style.display='block';
     els.vibeStatus.textContent='';
     els.vibePreviewWrap.classList.add('hidden');
     els.vibeEnabled.checked=false;
@@ -823,10 +1001,14 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
 
   if(useVibe){
     const asset=currentVibeAsset||await getLocalAsset('vibe');
-    if(!asset?.blob)throw new Error('先添加 Vibe 图片');
+    if(!vibeAssetUsable(asset))throw new Error('先添加或导入一个 Vibe');
     const base=naiFetchBase(endpoint);
     const info=clampNumber(els.vibeInformation.value,.05,1,.7);
-    const encoded=await encodedVibeFor(asset.blob,naiBody.model,info,base,key);
+    let encoded=vibeEncodingFor(asset,naiBody.model,info);
+    if(!encoded){
+      if(!asset.blob)throw new Error('这个 Vibe 文件没有当前 Information 档位的编码，也没有原图可重新编码');
+      encoded=await encodedVibeFor(asset.blob,naiBody.model,info,base,key);
+    }
     naiBody.parameters.reference_image_multiple=[encoded];
     naiBody.parameters.reference_strength_multiple=[clampNumber(els.vibeStrength.value,0,1,.6)];
     naiBody.parameters.reference_information_extracted_multiple=[info];
@@ -863,9 +1045,9 @@ function applyGalleryMeta(item){
   els.vibeStrengthValue.textContent=Number(els.vibeStrength.value).toFixed(2);
   els.vibeInformationValue.textContent=Number(els.vibeInformation.value).toFixed(2);
   els.referenceEnabled.checked=Boolean(item.referenceEnabled&&currentReferenceAsset?.blob);
-  els.vibeEnabled.checked=Boolean(item.vibeEnabled&&currentVibeAsset?.blob);
+  els.vibeEnabled.checked=Boolean(item.vibeEnabled&&vibeAssetUsable(currentVibeAsset));
   if(item.referenceEnabled&&!currentReferenceAsset?.blob)showToast('这张图当时用了 Reference，但当前设备没有对应参考图');
-  if(item.vibeEnabled&&!currentVibeAsset?.blob)showToast('这张图当时用了 Vibe，但当前设备没有对应 Vibe 图');
+  if(item.vibeEnabled&&!vibeAssetUsable(currentVibeAsset))showToast('这张图当时用了 Vibe，但当前设备没有对应 Vibe 图');
   els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
 renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.seed||'gallery');goView('workbench');
 }
@@ -1095,16 +1277,26 @@ els.uploadVibeBtn?.addEventListener('click',()=>els.vibeFile?.click());
 els.vibeFile?.addEventListener('change',async()=>{
   const file=els.vibeFile.files?.[0];
   if(!file)return;
-  if(!['image/png','image/jpeg','image/webp'].includes(file.type)){showToast('Vibe 请选择 PNG、JPG 或 WebP');els.vibeFile.value='';return;}
-  if(file.size>10*1024*1024){showToast('Vibe 请控制在 10MB 以内');els.vibeFile.value='';return;}
+  const lower=String(file.name||'').toLowerCase();
+  const isImage=['image/png','image/jpeg','image/webp'].includes(file.type)||/\.(png|jpe?g|webp)$/.test(lower);
+  const isDocument=/\.(json|naiv4vibe|naiv4vibebundle)$/.test(lower);
+  if(!isImage&&!isDocument){showToast('支持 PNG、JPG、WebP、JSON、.naiv4vibe、.naiv4vibeBundle');els.vibeFile.value='';return;}
+  const limit=isDocument?32*1024*1024:10*1024*1024;
+  if(file.size>limit){showToast(isDocument?'Vibe 文件请控制在 32MB 以内':'Vibe 图片请控制在 10MB 以内');els.vibeFile.value='';return;}
   try{
-    await putLocalAsset('vibe',file);
-    await refreshReferenceUi();
-    els.vibeEnabled.checked=true;
-    els.referenceEnabled.checked=false;
-    saveSettings();
-    showToast('Vibe 已添加');
-  }catch(e){console.error(e);showToast('Vibe 保存失败');}
+    if(isDocument){
+      await importVibeDocumentFile(file);
+    }else{
+      await putLocalAsset('vibe',file);
+      await refreshReferenceUi();
+      els.vibeEnabled.checked=true;
+      els.referenceEnabled.checked=false;
+      els.vibePresetSelect.value='';
+      els.deleteVibePresetBtn.disabled=true;
+      saveSettings();
+      showToast('Vibe 图片已添加');
+    }
+  }catch(e){console.error(e);showToast((e?.message||'Vibe 导入失败').slice(0,180));}
   finally{els.vibeFile.value='';}
 });
 els.removeVibeBtn?.addEventListener('click',async()=>{
@@ -1134,7 +1326,7 @@ els.referenceEnabled?.addEventListener('change',()=>{
 });
 els.vibeEnabled?.addEventListener('change',()=>{
   if(els.vibeEnabled.checked){
-    if(!currentVibeAsset?.blob){els.vibeEnabled.checked=false;showToast('先添加 Vibe 图片');return;}
+    if(!vibeAssetUsable(currentVibeAsset)){els.vibeEnabled.checked=false;showToast('先添加或导入一个 Vibe');return;}
     if(els.referenceEnabled.checked){els.referenceEnabled.checked=false;showToast('已关闭 Reference：两者不能同时启用');}
   }
   saveSettings();
