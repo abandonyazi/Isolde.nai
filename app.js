@@ -24,7 +24,7 @@ const els = {
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
-  watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
+  watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   toast: $('toast')
 };
 
@@ -128,6 +128,8 @@ function loadState() {
   els.protectTextBlock.checked = settings.protectTextBlock !== false;
   els.scenePrompt.value = settings.scenePrompt || '';
   els.extraNegative.value = settings.extraNegative || '';
+  els.watermarkOpacity.value = String(Number.isFinite(Number(settings.watermarkOpacity)) ? Math.max(0,Math.min(100,Number(settings.watermarkOpacity))) : 100);
+  els.watermarkOpacityValue.textContent = `${els.watermarkOpacity.value}%`;
   els.aspect.value = aspectFor(Number(els.width.value), Number(els.height.value));
   updateEndpointUi();
   renderPresetSelect();
@@ -152,6 +154,7 @@ function saveSettings() {
     protectTextBlock: els.protectTextBlock.checked,
     scenePrompt: els.scenePrompt.value,
     extraNegative: els.extraNegative.value,
+    watermarkOpacity: Number(els.watermarkOpacity.value),
     presetId: els.presetSelect.value,
     selectedAnchorIds
   };
@@ -449,7 +452,7 @@ async function addCustomWatermark(source){
 
     const w=canvas.width,h=canvas.height;
     ctx.save();
-    ctx.globalAlpha=1;
+    ctx.globalAlpha=Math.max(0,Math.min(1,Number(els.watermarkOpacity?.value ?? 100)/100));
     ctx.drawImage(mark,0,0,w,h);
     ctx.restore();
 
@@ -743,6 +746,10 @@ els.removeWatermarkBtn?.addEventListener('click',async()=>{
     showToast('移除水印失败');
   }
 });
+els.watermarkOpacity?.addEventListener('input',()=>{
+  els.watermarkOpacityValue.textContent=`${els.watermarkOpacity.value}%`;
+});
+els.watermarkOpacity?.addEventListener('change',saveSettings);
 
 loadState();
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
