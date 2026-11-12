@@ -6,6 +6,7 @@ It forwards only:
 
 - GET /user/subscription
 - POST /ai/generate-image
+- POST /ai/encode-vibe
 
 Allowed browser origins:
 
