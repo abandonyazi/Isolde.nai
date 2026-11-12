@@ -590,14 +590,35 @@ async function generate({forceSeed=null}={}) {
 function showResult(blob,seed){
   if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
   currentResultBlob=blob;
-  currentObjectUrl=URL.createObjectURL(blob); els.resultImage.src=currentObjectUrl; els.saveLink.href=currentObjectUrl; els.saveLink.download=seed ? `nai-${seed}.png` : `nai-${Date.now()}.png`;
+  currentObjectUrl=URL.createObjectURL(blob);
+  els.resultImage.src=currentObjectUrl;
+  els.saveLink.dataset.filename=seed ? `nai-${seed}.png` : `nai-${Date.now()}.png`;
   els.emptyResult.classList.add('hidden'); els.resultWrap.classList.remove('hidden');
 }
-function saveBlob(blob,name){
+function isIOSLike(){
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+}
+function fallbackDownload(blob,name){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
   a.href=url; a.download=name; document.body.appendChild(a); a.click(); a.remove();
   setTimeout(()=>URL.revokeObjectURL(url),60000);
+}
+async function saveBlob(blob,name){
+  if(isIOSLike() && navigator.share && typeof File!=='undefined'){
+    try{
+      const file=new File([blob],name,{type:blob.type||'image/png'});
+      const shareData={files:[file]};
+      if(!navigator.canShare || navigator.canShare(shareData)){
+        await navigator.share(shareData);
+        return;
+      }
+    }catch(e){
+      if(e?.name==='AbortError') return;
+      console.warn('iOS 文件分享失败，回退普通下载',e);
+    }
+  }
+  fallbackDownload(blob,name);
 }
 function loadCanvasImage(src){
   return new Promise((resolve,reject)=>{
@@ -1423,6 +1444,12 @@ els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els
 els.randomSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();saveSettings();});
 els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
 els.generateBtn.addEventListener('click',()=>generate());
+els.saveLink?.addEventListener('click',async()=>{
+  if(!currentResultBlob){showToast('还没有可保存的图片');return;}
+  const name=els.saveLink.dataset.filename || (currentSeed ? `nai-${currentSeed}.png` : `nai-${Date.now()}.png`);
+  try{await saveBlob(currentResultBlob,name);}
+  catch(e){console.error(e);showToast(e?.message||'原图保存失败');}
+});
 els.saveWatermarkedBtn?.addEventListener('click',async()=>{
   if(!currentResultBlob){showToast('还没有可保存的图片');return;}
   if(!currentWatermarkAsset?.blob){showToast('先在设置里上传水印');return;}
