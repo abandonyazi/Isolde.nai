@@ -1874,7 +1874,7 @@ window.addEventListener('message',async(event)=>{
       source:'isolde-nai-web',
       requestId:data.requestId,
       ok:true,
-      anchors:anchors.map((item)=>({id:item.id,name:item.name})).filter((item)=>item.name)
+      anchors:anchors.map((item)=>({id:item.id,name:item.name,prompt:item.prompt||''})).filter((item)=>item.name)
     },event.origin);
     return;
   }
