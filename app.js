@@ -22,7 +22,7 @@ const els = {
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
@@ -363,6 +363,131 @@ function renderAnchorPicker() {
 function makeButton(text, cls, fn) {
   const b = document.createElement('button');
   b.type='button'; b.textContent=text; b.className=cls; b.addEventListener('click',fn); return b;
+}
+function sillyTavernHostContext() {
+  try {
+    const own = globalThis.SillyTavern;
+    if (own && typeof own.getContext === 'function') return own.getContext();
+  } catch {}
+  try {
+    if (window.parent && window.parent !== window) {
+      const parentApi = window.parent.SillyTavern;
+      if (parentApi && typeof parentApi.getContext === 'function') return parentApi.getContext();
+    }
+  } catch {}
+  return null;
+}
+function collectChatu8Presets() {
+  const context = sillyTavernHostContext();
+  const root = context?.extensionSettings?.['st-chatu8'];
+  if (!root || typeof root !== 'object' || !root.yushe || typeof root.yushe !== 'object') {
+    return { found:false, activeName:'', items:[] };
+  }
+  const activeName = typeof root.yusheid_novelai === 'string' ? root.yusheid_novelai.trim() : '';
+  const items = [];
+  for (const [name, value] of Object.entries(root.yushe)) {
+    if (!name.trim() || !value || typeof value !== 'object') continue;
+    const preset = value;
+    items.push({
+      name:name.trim(),
+      artist:typeof preset.fixedPrompt === 'string' ? preset.fixedPrompt.trim() : '',
+      positive:typeof preset.fixedPrompt_end === 'string' ? preset.fixedPrompt_end.trim() : '',
+      negative:typeof preset.negativePrompt === 'string' ? preset.negativePrompt.trim() : '',
+    });
+  }
+  return { found:true, activeName, items };
+}
+function importChatu8Presets() {
+  const source = collectChatu8Presets();
+  if (!source.found) {
+    showToast('没有检测到智绘姬预设；这个入口只在安装了智绘姬的酒馆里生效');
+    return;
+  }
+  if (!source.items.length) {
+    showToast('检测到智绘姬，但里面还没有提示词预设');
+    return;
+  }
+
+  let added=0, overwritten=0, skipped=0;
+  const plan = source.items.map((item) => {
+    const existing = presets.find((preset) => preset.name === item.name);
+    if (!existing) return { state:'add', item };
+    const same =
+      String(existing.artist || '').trim() === item.artist &&
+      String(existing.positive || '').trim() === item.positive &&
+      String(existing.negative || '').trim() === item.negative;
+    return { state:same?'skip':'overwrite', item, existing };
+  });
+  for (const entry of plan) {
+    if (entry.state === 'add') added++;
+    else if (entry.state === 'overwrite') overwritten++;
+    else skipped++;
+  }
+
+  if (!added && !overwritten) {
+    const active = source.activeName && presets.find((preset) => preset.name === source.activeName);
+    if (active) {
+      settings.presetId = active.id;
+      renderPresetSelect();
+      els.presetSelect.value = active.id;
+      updateAssembly();
+    }
+    showToast('智绘姬预设已经全部同步，无需重复导入');
+    return;
+  }
+
+  const message = [
+    '从智绘姬导入提示词预设？',
+    added ? '新增 ' + added + ' 个' : '',
+    overwritten ? '同名覆盖 ' + overwritten + ' 个' : '',
+    skipped ? '相同跳过 ' + skipped + ' 个' : '',
+    overwritten ? '同名预设会保留 Isolde.nai 的 ID，但画师串、正面和负面会更新。' : '',
+  ].filter(Boolean).join('\n');
+  if (!confirm(message)) return;
+
+  const importedIds = new Map();
+  for (const entry of plan) {
+    const item = entry.item;
+    if (entry.state === 'skip') {
+      importedIds.set(item.name, entry.existing.id);
+      continue;
+    }
+    if (entry.state === 'overwrite') {
+      entry.existing.artist = item.artist;
+      entry.existing.positive = item.positive;
+      entry.existing.negative = item.negative;
+      entry.existing.importedFrom = 'st-chatu8';
+      entry.existing.updatedAt = Date.now();
+      importedIds.set(item.name, entry.existing.id);
+      continue;
+    }
+    const created = {
+      id:uid('preset'),
+      name:item.name,
+      artist:item.artist,
+      positive:item.positive,
+      negative:item.negative,
+      importedFrom:'st-chatu8',
+      updatedAt:Date.now(),
+    };
+    presets.unshift(created);
+    importedIds.set(item.name, created.id);
+  }
+
+  saveJson(PRESETS_KEY,presets);
+  const activeId = source.activeName ? importedIds.get(source.activeName) : '';
+  if (activeId) settings.presetId = activeId;
+  renderPresetSelect();
+  if (activeId) els.presetSelect.value = activeId;
+  renderPresetLibrary();
+  updateAssembly();
+
+  const parts=[];
+  if(added)parts.push('新增 '+added);
+  if(overwritten)parts.push('覆盖 '+overwritten);
+  if(skipped)parts.push('跳过 '+skipped);
+  if(activeId)parts.push('已切到智绘姬当前预设');
+  showToast('智绘姬导入完成：'+parts.join('，'));
 }
 function renderPresetLibrary() {
   els.presetList.innerHTML = '';
@@ -1726,6 +1851,7 @@ els.regenBtn.addEventListener('click',()=>{
 els.newSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();generate({forceSeed:els.seed.value});});
 
 els.inspectNaiBtn?.addEventListener('click',()=>{resetNaiInspector();els.naiInspectDialog.showModal();});
+els.importChatu8Btn?.addEventListener('click',importChatu8Presets);
 els.chooseNaiInspectBtn?.addEventListener('click',()=>els.naiInspectFile?.click());
 els.replaceNaiInspectBtn?.addEventListener('click',()=>els.naiInspectFile?.click());
 els.naiInspectFile?.addEventListener('change',async()=>{
