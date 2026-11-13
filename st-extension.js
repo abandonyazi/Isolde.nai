@@ -114,8 +114,7 @@ function createUi() {
       '<label style="grid-column:1 / -1">每隔多少轮<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
     '<div class="isolde-actions">',
-      '<button class="isolde-btn primary" data-isolde-draw type="button">画这一幕</button>',
-      '<button class="isolde-btn" data-isolde-workbench type="button">完整工作台</button>',
+      '<button class="isolde-btn primary" data-isolde-workbench type="button">打开 Isolde.nai</button>',
     '</div>',
   ].join('');
 
@@ -168,16 +167,6 @@ function createUi() {
   if (countControl) countControl.addEventListener('change', (event) => {
     settings().count = clampInt(event.target.value, 1, 12, DEFAULTS.count);
     save();
-  });
-
-  const drawControl = popover.querySelector('[data-isolde-draw]');
-  if (drawControl) drawControl.addEventListener('click', () => {
-    const messageId = latestDrawableMessageId();
-    if (messageId < 0) {
-      toast('当前还没有可以画的剧情。', 'warning');
-      return;
-    }
-    void runIllustration(messageId, true);
   });
 
   const workbenchControl = popover.querySelector('[data-isolde-workbench]');
