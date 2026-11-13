@@ -420,6 +420,18 @@
         </details>
 
         <details class="settings-fold">
+          <summary><span>配置迁移</span></summary>
+          <div class="settings-fold-body export-box">
+            <div><p class="settings-fold-note">导出预设、角色锚点、绘图设置、Reference、Vibe / Vibe 预设和水印。Token 与图库不会写进配置文件。</p></div>
+            <div class="watermark-actions">
+              <button id="exportConfigBtn" class="secondary-btn" type="button">导出配置 JSON</button>
+              <button id="importConfigBtn" class="secondary-btn" type="button">导入配置 JSON</button>
+              <input id="importConfigFile" class="watermark-file-input" type="file" accept="application/json,.json" />
+            </div>
+          </div>
+        </details>
+
+        <details class="settings-fold">
           <summary><span>图库备份</span></summary>
           <div class="settings-fold-body export-box">
             <div><p class="settings-fold-note">把这台设备里保存的全部原图一次性打包成 ZIP。</p></div>
