@@ -374,6 +374,7 @@ async function attachResults(results, messageId) {
       isolde_prompt: result.prompt || '',
       isolde_negative: result.negative || '',
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
+      isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
     });
   }
 
@@ -427,7 +428,18 @@ function decorateMessageMedia(messageId) {
       void rerollMedia(messageId, mediaIndex, true, reroll, sameSeed);
     });
 
-    tools.append(reroll, sameSeed);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'isolde-delete';
+    remove.textContent = '删除';
+    remove.title = '从楼层、服务器和 Isolde.nai 图库删除这张图';
+    remove.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void deleteIsoldeMedia(messageId, mediaIndex, reroll, sameSeed, remove);
+    });
+
+    tools.append(reroll, sameSeed, remove);
     container.appendChild(tools);
   });
 }
@@ -441,6 +453,87 @@ function decorateAllIsoldeMedia() {
       decorateMessageMedia(index);
     }
   });
+}
+
+async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
+  if (running) {
+    toast('上一批图片还在生成。', 'warning');
+    return;
+  }
+
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const media = message && message.extra && Array.isArray(message.extra.media)
+    ? message.extra.media[Number(mediaIndex)]
+    : null;
+  if (!media || media.source !== 'Isolde.nai') {
+    toast('这张图已经不在这里了。', 'warning');
+    return;
+  }
+
+  if (!globalThis.confirm('删除这张图？\n会同时从当前楼层、SillyTavern 图片文件和 Isolde.nai 图库移除。')) return;
+
+  running = true;
+  buttons.forEach((button) => { if (button) button.disabled = true; });
+  setState('generating', '正在删除…');
+
+  try {
+    const oldUrl = media.url;
+    const oldGalleryId = media.isolde_gallery_id || '';
+    const oldSeed = media.isolde_seed || '';
+    const oldScene = media.isolde_scene_prompt || media.title || '';
+
+    message.extra.media.splice(Number(mediaIndex), 1);
+
+    if (message.extra.media.length) {
+      const current = Number(message.extra.media_index);
+      if (!Number.isFinite(current) || current >= message.extra.media.length) {
+        message.extra.media_index = Math.max(0, message.extra.media.length - 1);
+      } else if (current > Number(mediaIndex)) {
+        message.extra.media_index = current - 1;
+      } else if (current === Number(mediaIndex)) {
+        message.extra.media_index = Math.min(Number(mediaIndex), message.extra.media.length - 1);
+      }
+    } else {
+      delete message.extra.media;
+      delete message.extra.media_index;
+      delete message.extra.media_display;
+      delete message.extra.inline_image;
+    }
+
+    const jq = globalThis.jQuery || globalThis.$;
+    const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
+    if (element && element.length) {
+      appendMediaToMessage(message, element, SCROLL_BEHAVIOR.KEEP);
+      decorateMessageMedia(messageId);
+    }
+    if (context.saveChat) await context.saveChat();
+
+    if (oldUrl) {
+      try { await deleteMediaFromServer(oldUrl, true); } catch {}
+    }
+
+    try {
+      await bridgeRequest('deleteGallery', {
+        galleryId: oldGalleryId,
+        seed: oldSeed,
+        scenePrompt: oldScene,
+      }, 60000);
+    } catch (error) {
+      console.warn('[Isolde.nai] local gallery deletion failed', error);
+      toast('楼层图片已删，但 Isolde.nai 本地图库删除失败。', 'warning');
+    }
+
+    setState('success', '图片已删除');
+    setTimeout(() => setState('idle', '待机'), 1400);
+  } catch (error) {
+    console.error('[Isolde.nai] delete failed', error);
+    setState('error', (error && error.message) || '删除失败');
+    toast((error && error.message) || '删除失败', 'error');
+  } finally {
+    running = false;
+    buttons.forEach((button) => { if (button) button.disabled = false; });
+  }
 }
 
 async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
@@ -497,6 +590,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
       isolde_prompt: result.prompt || media.isolde_prompt || '',
       isolde_negative: result.negative || media.isolde_negative || '',
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
+      isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
     };
 
     const jq = globalThis.jQuery || globalThis.$;
@@ -509,6 +603,18 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
 
     if (oldUrl && oldUrl !== imagePath) {
       try { await deleteMediaFromServer(oldUrl, true); } catch {}
+    }
+
+    if (media.isolde_gallery_id || media.isolde_seed) {
+      try {
+        await bridgeRequest('deleteGallery', {
+          galleryId: media.isolde_gallery_id || '',
+          seed: media.isolde_seed || '',
+          scenePrompt: media.isolde_scene_prompt || media.title || '',
+        }, 60000);
+      } catch (error) {
+        console.warn('[Isolde.nai] old reroll gallery item cleanup failed', error);
+      }
     }
 
     setState('success', keepSeed ? '同 seed 重绘完成' : '重 Roll 完成');
