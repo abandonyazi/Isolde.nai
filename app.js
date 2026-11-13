@@ -364,39 +364,52 @@ function makeButton(text, cls, fn) {
   const b = document.createElement('button');
   b.type='button'; b.textContent=text; b.className=cls; b.addEventListener('click',fn); return b;
 }
-function sillyTavernHostContext() {
-  try {
-    const own = globalThis.SillyTavern;
-    if (own && typeof own.getContext === 'function') return own.getContext();
-  } catch {}
+function collectChatu8Presets() {
   try {
     if (window.parent && window.parent !== window) {
-      const parentApi = window.parent.SillyTavern;
-      if (parentApi && typeof parentApi.getContext === 'function') return parentApi.getContext();
+      const host = window.parent.IsoldeNaiHost;
+      if (host && typeof host.getChatu8Presets === 'function') {
+        const snapshot = host.getChatu8Presets();
+        if (snapshot && typeof snapshot === 'object') {
+          return {
+            found: Boolean(snapshot.found),
+            activeName: String(snapshot.activeName || '').trim(),
+            items: Array.isArray(snapshot.items) ? snapshot.items.map((item) => ({
+              name: String((item && item.name) || '').trim(),
+              artist: String((item && item.artist) || '').trim(),
+              positive: String((item && item.positive) || '').trim(),
+              negative: String((item && item.negative) || '').trim(),
+            })).filter((item) => item.name) : [],
+          };
+        }
+      }
     }
   } catch {}
-  return null;
-}
-function collectChatu8Presets() {
-  const context = sillyTavernHostContext();
-  const root = context?.extensionSettings?.['st-chatu8'];
-  if (!root || typeof root !== 'object' || !root.yushe || typeof root.yushe !== 'object') {
+
+  try {
+    const api = globalThis.SillyTavern || (window.parent && window.parent !== window ? window.parent.SillyTavern : null);
+    const context = api && typeof api.getContext === 'function' ? api.getContext() : null;
+    const root = context?.extensionSettings?.['st-chatu8'];
+    if (!root || typeof root !== 'object' || !root.yushe || typeof root.yushe !== 'object') {
+      return { found:false, activeName:'', items:[] };
+    }
+    const activeName = typeof root.yusheid_novelai === 'string' ? root.yusheid_novelai.trim() : '';
+    const items = [];
+    for (const [name, value] of Object.entries(root.yushe)) {
+      if (!String(name || '').trim() || !value || typeof value !== 'object') continue;
+      items.push({
+        name:String(name).trim(),
+        artist:typeof value.fixedPrompt === 'string' ? value.fixedPrompt.trim() : '',
+        positive:typeof value.fixedPrompt_end === 'string' ? value.fixedPrompt_end.trim() : '',
+        negative:typeof value.negativePrompt === 'string' ? value.negativePrompt.trim() : '',
+      });
+    }
+    return { found:true, activeName, items };
+  } catch {
     return { found:false, activeName:'', items:[] };
   }
-  const activeName = typeof root.yusheid_novelai === 'string' ? root.yusheid_novelai.trim() : '';
-  const items = [];
-  for (const [name, value] of Object.entries(root.yushe)) {
-    if (!name.trim() || !value || typeof value !== 'object') continue;
-    const preset = value;
-    items.push({
-      name:name.trim(),
-      artist:typeof preset.fixedPrompt === 'string' ? preset.fixedPrompt.trim() : '',
-      positive:typeof preset.fixedPrompt_end === 'string' ? preset.fixedPrompt_end.trim() : '',
-      negative:typeof preset.negativePrompt === 'string' ? preset.negativePrompt.trim() : '',
-    });
-  }
-  return { found:true, activeName, items };
 }
+
 function importChatu8Presets() {
   const source = collectChatu8Presets();
   if (!source.found) {
