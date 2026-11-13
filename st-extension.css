@@ -27,3 +27,9 @@
 #isolde-nai-workbench .isolde-workbench-bar button{border:1px solid rgba(255,255,255,.22);border-radius:999px;padding:7px 13px;background:rgba(255,255,255,.10);color:inherit}
 #isolde-nai-workbench iframe{width:100%;height:100%;border:0;background:#eef4f8}
 @media(max-width:600px){#isolde-nai-orb{width:46px;height:46px;right:13px;bottom:calc(env(safe-area-inset-bottom) + 70px)}#isolde-nai-popover{right:13px;bottom:calc(env(safe-area-inset-bottom) + 126px);width:min(320px,calc(100vw - 26px))}}
+
+.isolde-media-tools{position:absolute;right:8px;bottom:8px;z-index:8;display:flex;gap:6px;opacity:.88}
+.isolde-media-tools button{border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:5px 9px;background:rgba(20,34,48,.72);color:#f4f8fb;font-size:11px;line-height:1.2;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.18)}
+.isolde-media-tools button:hover{background:rgba(42,70,94,.82)}
+.isolde-media-tools button:disabled{opacity:.48;cursor:default}
+.mes_media_container{position:relative}
