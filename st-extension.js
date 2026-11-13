@@ -673,7 +673,7 @@ async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
     const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
     if (element && element.length) {
       appendMediaToMessage(message, element, SCROLL_BEHAVIOR.KEEP);
-      decorateMessageMedia(messageId);
+      queueDecorate(messageId);
     }
     if (context.saveChat) await context.saveChat();
 
@@ -766,7 +766,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
     if (element && element.length) {
       appendMediaToMessage(message, element, SCROLL_BEHAVIOR.KEEP);
-      decorateMessageMedia(messageId);
+      queueDecorate(messageId);
     }
     if (context.saveChat) await context.saveChat();
 
@@ -800,9 +800,9 @@ async function runIllustration(messageId, force = false) {
     }
 
     setState('generating', '正在生成 ' + plan.scenes.length + ' 张…');
-    const response = await bridgeRequest('generate', { scenes: plan.scenes });
+    const response = await bridgeRequest('generate', { scenes: plan.scenes.map((scene) => scene.prompt) });
     const results = response && Array.isArray(response.results) ? response.results : [];
-    await attachResults(results, messageId);
+    await attachResults(results, messageId, plan.scenes);
 
     setState('success', '已生成 ' + results.length + ' 张');
     toast('这一幕生成了 ' + results.length + ' 张图。');
@@ -818,7 +818,7 @@ async function runIllustration(messageId, force = false) {
 }
 
 async function onCharacterRendered(messageId, source) {
-  setTimeout(() => decorateMessageMedia(messageId), 0);
+  queueDecorate(messageId);
   const s = settings();
   if (!s.enabled || s.mode === 'manual') return;
   if (source === 'extension') return;
@@ -855,8 +855,8 @@ if (onReady) {
     createUi();
     eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterRendered);
     eventSource.on(event_types.CHAT_CHANGED, resetForChat);
-    if (event_types.MESSAGE_UPDATED) eventSource.on(event_types.MESSAGE_UPDATED, (messageId) => setTimeout(() => decorateMessageMedia(messageId), 0));
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => setTimeout(() => decorateMessageMedia(messageId), 0));
+    if (event_types.MESSAGE_UPDATED) eventSource.on(event_types.MESSAGE_UPDATED, (messageId) => queueDecorate(messageId));
+    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => queueDecorate(messageId));
     setTimeout(decorateAllIsoldeMedia, 120);
   });
 } else {
