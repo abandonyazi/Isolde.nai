@@ -587,15 +587,15 @@ function parseOpenAiImage(text) {
   for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
   return new Blob([bytes],{type:'image/png'});
 }
-async function generate({forceSeed=null}={}) {
-  if(busy) return;
+async function generate({forceSeed=null,throwOnError=false}={}) {
+  if(busy){if(throwOnError)throw new Error('上一张图片还在生成');return;}
   rehydrateConnectionFields();
   const key=els.apiKey.value.trim() || loadSavedToken();
-  if(!key){ goView('settings'); showToast('先填 Token'); return; }
+  if(!key){ goView('settings'); showToast('先填 Token'); if(throwOnError)throw new Error('先在完整工作台填写 NAI Token'); return; }
   if(!els.apiKey.value.trim()) els.apiKey.value=key;
   persistTokenIfRemembered();
-  if(!assemblePrompts().positive.trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); return; }
-  let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);return;}
+  if(!assemblePrompts().positive.trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); if(throwOnError)throw new Error('画面词和预设都是空的'); return; }
+  let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);if(throwOnError)throw e;return;}
   const seed = forceSeed !== null ? String(forceSeed).trim() : els.seed.value.trim();
   currentSeed = seed;
   const naiBody=buildNaiPayload(seed || null);
@@ -626,9 +626,11 @@ async function generate({forceSeed=null}={}) {
       createdAt:Date.now()
     });
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
+    return {blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,width:Number(els.width.value),height:Number(els.height.value)};
   }catch(e){
     console.error(e); setConnectionState('error','生成失败');
     const msg=e?.message||String(e); showToast(msg.slice(0,200));
+    if(throwOnError) throw e;
   }finally{
     busy=false; els.generateBtn.disabled=false; els.generateLabel.textContent='生成'; els.generateSpinner.classList.add('hidden');
   }
@@ -1715,6 +1717,34 @@ els.watermarkOpacity?.addEventListener('input',()=>{
 });
 els.watermarkOpacity?.addEventListener('change',saveSettings);
 
+window.addEventListener('message',async(event)=>{
+  const data=event.data;
+  if(event.origin!==window.location.origin||!data||data.source!=='isolde-nai-st'||!data.requestId)return;
+  if(data.type!=='generate')return;
+  const scenes=Array.isArray(data.scenes)?data.scenes.map(x=>String(x||'').trim()).filter(Boolean):[];
+  if(!scenes.length){
+    event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:'没有收到画面词'},event.origin);
+    return;
+  }
+  const previousScene=els.scenePrompt.value;
+  const results=[];
+  try{
+    for(const scene of scenes){
+      els.scenePrompt.value=scene;
+      updateAssembly();
+      const result=await generate({forceSeed:'',throwOnError:true});
+      if(!result?.blob)throw new Error('图片生成没有返回结果');
+      results.push(result);
+    }
+    event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:true,results},event.origin);
+  }catch(e){
+    event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:e?.message||String(e)},event.origin);
+  }finally{
+    els.scenePrompt.value=previousScene;
+    updateAssembly();
+  }
+});
+
 loadState();
 window.addEventListener('pageshow',()=>{
   requestAnimationFrame(()=>{
@@ -1729,4 +1759,4 @@ document.addEventListener('visibilitychange',()=>{
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
 renderVibePresets().catch(e=>console.warn('Vibe 预设读取失败',e));
-if('serviceWorker' in navigator) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if('serviceWorker' in navigator && !new URLSearchParams(location.search).has('embed')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
