@@ -31,3 +31,24 @@ The public GitHub Pages build uses a small Cloudflare Worker as its NovelAI CORS
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/abandonyazi/Isolde.nai/tree/main/cloudflare-worker)
 
 Worker source lives in `cloudflare-worker/`.
+
+
+## SillyTavern version
+
+The same repository can also be installed directly as a SillyTavern third-party extension.
+
+1. Open **Extensions → Install Extension** in SillyTavern.
+2. Paste: `https://github.com/abandonyazi/Isolde.nai`
+3. Reload SillyTavern after installation.
+
+The extension adds a small floating Isolde.nai orb beside the chat. Tap it to choose:
+
+- **Smart**: every N character replies, judge whether the current scene is visually worth drawing.
+- **Fixed**: every N character replies, always draw.
+- **Manual**: only draw when the user taps “画这一幕”.
+- **Images per trigger**: 1–12 images. The director produces different shots/compositions for the same scene.
+- **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, and connection settings.
+
+Generated images are attached to the SillyTavern message that triggered them and saved through SillyTavern's image storage.
+
+The hosted web app remains available independently; installing the extension does not replace it.
