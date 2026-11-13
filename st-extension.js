@@ -236,39 +236,56 @@ function substituteContextText(context, value) {
   }
 }
 
-function currentCharacterCard(messageId) {
+function currentCharacterCards(messageId) {
   const context = getContext();
   if (!context) return '';
-  const message = context.chat && context.chat[Number(messageId)];
-  const speaker = String((message && message.name) || context.name2 || '').trim();
+  const chat = Array.isArray(context.chat) ? context.chat : [];
   const characters = Array.isArray(context.characters) ? context.characters : [];
-  let character = null;
+  const s = settings();
+  const start = Math.max(0, Number(messageId) - s.contextMessages + 1);
+  const wantedNames = new Set();
 
-  if (speaker) character = characters.find((item) => item && String(item.name || '').trim() === speaker) || null;
-  if (!character && context.characterId !== undefined && context.characterId !== null && context.characterId !== '') {
-    character = characters[Number(context.characterId)] || null;
+  for (const message of chat.slice(start, Number(messageId) + 1)) {
+    if (!message || message.is_user || message.is_system) continue;
+    const name = String(message.name || '').trim();
+    if (name) wantedNames.add(name);
   }
-  if (!character) return '';
 
-  const fields = [
-    ['description', character.description],
-    ['personality', character.personality],
-    ['scenario', character.scenario],
-  ];
-  return fields
-    .map(([label, value]) => {
+  const currentId = context.characterId;
+  if (currentId !== undefined && currentId !== null && currentId !== '') {
+    const current = characters[Number(currentId)];
+    const name = String((current && current.name) || '').trim();
+    if (name) wantedNames.add(name);
+  }
+  if (!wantedNames.size && context.name2) wantedNames.add(String(context.name2).trim());
+
+  const blocks = [];
+  characters.forEach((character, index) => {
+    if (!character || typeof character !== 'object') return;
+    const name = String(character.name || '').trim();
+    const isCurrent = currentId !== undefined && currentId !== null && currentId !== '' && String(index) === String(currentId);
+    if (!isCurrent && (!name || !wantedNames.has(name))) return;
+
+    const fields = [
+      ['description', character.description],
+      ['personality', character.personality],
+      ['scenario', character.scenario],
+    ].map(([label, value]) => {
       const text = substituteContextText(context, value);
       return text ? label + ': ' + text : '';
-    })
-    .filter(Boolean)
-    .join('\n');
+    }).filter(Boolean);
+
+    if (fields.length) blocks.push('Character card — ' + (name || ('#' + index)) + '\n' + fields.join('\n'));
+  });
+
+  return blocks.join('\n\n').slice(0, 14000);
 }
 
 function currentPersona() {
   const context = getContext();
   if (!context || typeof context.substituteParams !== 'function') return '';
   try {
-    return String(context.substituteParams('{{persona}}') || '').trim();
+    return String(context.substituteParams('{{persona}}') || '').trim().slice(0, 6000);
   } catch {
     return '';
   }
@@ -320,6 +337,31 @@ async function currentWorldInfo(messageId) {
     return '';
   }
 }
+
+function chatu8PresetSnapshot() {
+  const context = getContext();
+  const root = context && context.extensionSettings && context.extensionSettings['st-chatu8'];
+  if (!root || typeof root !== 'object' || !root.yushe || typeof root.yushe !== 'object') {
+    return { found: false, activeName: '', items: [] };
+  }
+  const activeName = typeof root.yusheid_novelai === 'string' ? root.yusheid_novelai.trim() : '';
+  const items = [];
+  for (const [name, value] of Object.entries(root.yushe)) {
+    if (!String(name || '').trim() || !value || typeof value !== 'object') continue;
+    items.push({
+      name: String(name).trim(),
+      artist: typeof value.fixedPrompt === 'string' ? value.fixedPrompt.trim() : '',
+      positive: typeof value.fixedPrompt_end === 'string' ? value.fixedPrompt_end.trim() : '',
+      negative: typeof value.negativePrompt === 'string' ? value.negativePrompt.trim() : '',
+    });
+  }
+  return { found: true, activeName, items };
+}
+
+globalThis.IsoldeNaiHost = {
+  ...(globalThis.IsoldeNaiHost && typeof globalThis.IsoldeNaiHost === 'object' ? globalThis.IsoldeNaiHost : {}),
+  getChatu8Presets: chatu8PresetSnapshot,
+};
 
 function formatAnchorLibrary(anchorEntries) {
   const entries = Array.isArray(anchorEntries) ? anchorEntries : [];
@@ -460,7 +502,7 @@ async function planScenes(messageId, force) {
 
   const [worldInfo] = await Promise.all([currentWorldInfo(messageId)]);
   const sourceContext = {
-    charCard: currentCharacterCard(messageId),
+    charCard: currentCharacterCards(messageId),
     persona: currentPersona(),
     worldInfo,
   };
