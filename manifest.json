@@ -1,0 +1,13 @@
+{
+  "display_name": "Isolde.nai",
+  "loading_order": 80,
+  "requires": [],
+  "optional": [],
+  "js": "st-extension.js",
+  "css": "st-extension.css",
+  "author": "abandonyazi",
+  "version": "0.1.0",
+  "homePage": "https://github.com/abandonyazi/Isolde.nai",
+  "auto_update": true,
+  "description": "Isolde.nai for SillyTavern: floating controls, automatic scene illustration, and the full NAI workbench."
+}
