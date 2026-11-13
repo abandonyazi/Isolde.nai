@@ -1344,8 +1344,22 @@ async function addGallery(blob,meta){
 async function getGallery(){
   const db=await openDb();const items=await new Promise((resolve,reject)=>{const tx=db.transaction('history','readonly');const req=tx.objectStore('history').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});db.close();return items.sort((a,b)=>(b.id||0)-(a.id||0));
 }
-async function deleteGalleryItem(id){
-  const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();
+async function deleteGalleryItem(id,card){
+  const scrollTop=window.scrollY;
+  const scrollLeft=window.scrollX;
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+  db.close();
+  if(card?.isConnected) card.remove();
+  const remaining=els.galleryGrid.querySelectorAll('.gallery-card').length;
+  els.galleryCount.textContent=`${remaining} 张 · 保存在此设备`;
+  if(!remaining){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';
+    els.galleryGrid.appendChild(note);
+  }
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(scrollLeft,scrollTop)));
 }
 function applyGalleryMeta(item){
   els.scenePrompt.value=item.scenePrompt??item.prompt??'';
@@ -1382,7 +1396,7 @@ async function renderGallery(){
       const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);ib.addEventListener('click',()=>applyGalleryMeta(item));card.appendChild(ib);
       const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
       const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
-      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id,card)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
     }
   }catch(e){console.warn(e);showToast('图库读取失败');}
 }
