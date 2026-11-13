@@ -331,6 +331,18 @@ function formatAnchorLibrary(anchorEntries) {
   return lines.length ? lines.join('\n').slice(0, 16000) : '(empty)';
 }
 
+function cleanSceneCharacters(value) {
+  if (!Array.isArray(value)) return [];
+  return value.map((character) => {
+    if (!character || typeof character !== 'object') return null;
+    return {
+      name: String(character.name || '').trim(),
+      anchor: String(character.anchor || '').trim(),
+      prompt: String(character.prompt || character.appearance || '').trim(),
+    };
+  }).filter((character) => character && (character.anchor || character.prompt));
+}
+
 function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}) {
   const s = settings();
   const conversation = conversationFor(messageId);
@@ -351,17 +363,18 @@ function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}
     'When generate=true, return exactly ' + s.count + ' scene objects. If the reply contains several distinct visual moments, distribute the images across those moments. If fewer moments exist than the requested image count, use alternate shots of the strongest moments.',
     '',
     'Return JSON only with this exact structure:',
-    '{"generate":true,"reason":"short reason","scenes":[{"prompt":"NovelAI scene tags","after_paragraph":1},{"prompt":"NovelAI scene tags","after_paragraph":3}]}',
+    '{"generate":true,"reason":"short reason","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"character-specific NovelAI tags"}]}]}',
     '',
     'Rules:',
     '- after_paragraph is 1-based and must point to the paragraph whose scene the image depicts.',
     '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
-    '- Focus on action, pose, expression, camera, environment, clothing, lighting, atmosphere, and important props.',
+    '- prompt is the Base Prompt only: global character counts, environment, composition, camera, lighting, atmosphere, and shared relations.',
+    '- Put every visible individual in characters[]. Each characters[].prompt contains that person\'s current clothing, expression, pose, action, props, and identity-specific visual traits.',
     '- Decide who is visibly present from all supplied sources and story continuity. A visible character does not need to exist in the fixed appearance library.',
-    '- Fixed appearance library is authoritative only for characters that actually match an entry. Copy that entry\'s appearance tags verbatim into the scene prompt once.',
-    '- For a visible character with no matching library entry, derive concise appearance tags from the character card, persona, activated world info, and story context. Do not refuse or omit the character merely because the library has no entry.',
-    '- Do not save or invent a permanent library entry. This request only creates the current scene prompt.',
+    '- If a visible character matches the fixed appearance library, set anchor to that exact library name. Do not copy or rewrite the saved fixed appearance into characters[].prompt; the plugin injects the saved anchor itself.',
+    '- For a visible character with no matching library entry, leave anchor empty and derive concise fixed appearance plus current clothing/action from the character card, persona, activated world info, and story context.',
+    '- Do not save or invent a permanent library entry. Library-missing characters stay temporary for this image.',
     '- One-off or unnamed characters may be drawn from explicit story details without being added to the library.',
     '- Resolve names, nicknames, titles, pronouns, and indirect references from context instead of requiring literal name matches.',
     '- If two possible identities remain genuinely ambiguous, prefer the interpretation best supported by the immediate scene and earlier context; do not merge two characters into one.',
@@ -409,21 +422,25 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
   let scenes = Array.isArray(data && data.scenes) ? data.scenes : [];
   scenes = scenes.map((scene) => {
     if (typeof scene === 'string') {
-      return { prompt: scene.trim(), afterParagraph: paragraphCount };
+      return { prompt: scene.trim(), afterParagraph: paragraphCount, characters: [] };
     }
     const prompt = String((scene && (scene.prompt || scene.scene)) || '').trim();
     const afterParagraph = clampInt(scene && (scene.after_paragraph ?? scene.afterParagraph), 1, Math.max(1, paragraphCount), paragraphCount);
-    return { prompt, afterParagraph };
+    return { prompt, afterParagraph, characters: cleanSceneCharacters(scene && scene.characters) };
   }).filter((scene) => scene.prompt);
 
   if (generate && !scenes.length && data && typeof data.prompt === 'string') {
-    scenes = [{ prompt: data.prompt.trim(), afterParagraph: paragraphCount }];
+    scenes = [{ prompt: data.prompt.trim(), afterParagraph: paragraphCount, characters: cleanSceneCharacters(data.characters) }];
   }
 
   if (generate && scenes.length) {
     const base = scenes[scenes.length - 1];
     while (scenes.length < count) {
-      scenes.push({ prompt: base.prompt + ', alternate camera angle, different composition', afterParagraph: base.afterParagraph });
+      scenes.push({
+        prompt: base.prompt + ', alternate camera angle, different composition',
+        afterParagraph: base.afterParagraph,
+        characters: Array.isArray(base.characters) ? base.characters.map((character) => ({ ...character })) : [],
+      });
     }
     scenes = scenes.slice(0, count);
   }
@@ -548,6 +565,7 @@ async function attachResults(results, messageId, scenePlans = []) {
       isolde_negative: result.negative || '',
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
+      isolde_characters: cleanSceneCharacters(result.characters || plan.characters),
       isolde_after_paragraph: afterParagraph,
       isolde_anchor_text: anchorText,
     });
@@ -617,6 +635,7 @@ async function addPendingScenes(messageId, scenes) {
     const pending = {
       id: 'isolde-pending-' + stamp + '-' + index + '-' + Math.random().toString(36).slice(2, 7),
       prompt: String(scene.prompt || '').trim(),
+      characters: cleanSceneCharacters(scene.characters),
       afterParagraph,
       anchorText,
     };
@@ -665,12 +684,15 @@ async function generatePendingScene(messageId, pendingId, ...buttons) {
   setState('generating', '正在生成这一个生图点…');
 
   try {
-    const response = await bridgeRequest('generate', { scenes: [item.prompt] });
+    const response = await bridgeRequest('generate', {
+      scenePlans: [{ prompt: item.prompt, characters: cleanSceneCharacters(item.characters) }],
+    });
     const result = response && Array.isArray(response.results) ? response.results[0] : null;
     if (!result || !(result.blob instanceof Blob)) throw new Error('没有收到图片');
 
     await attachResults([result], messageId, [{
       prompt: item.prompt,
+      characters: cleanSceneCharacters(item.characters),
       afterParagraph: item.afterParagraph,
     }]);
 
@@ -1052,7 +1074,10 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
   try {
     const seeds = keepSeed && media.isolde_seed ? [String(media.isolde_seed)] : [];
     const response = await bridgeRequest('generate', {
-      scenes: [scenePrompt],
+      scenePlans: [{
+        prompt: scenePrompt,
+        characters: cleanSceneCharacters(media.isolde_characters),
+      }],
       seeds,
       promptOverrides: media.isolde_prompt ? [{
         positive: String(media.isolde_prompt || ''),
@@ -1077,6 +1102,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
       isolde_negative: result.negative || media.isolde_negative || '',
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
+      isolde_characters: cleanSceneCharacters(result.characters || media.isolde_characters),
     };
     message.extra.media.splice(Number(mediaIndex) + 1, 0, newMedia);
     message.extra.media_index = Number(mediaIndex) + 1;
