@@ -226,7 +226,7 @@ function latestParagraphs(messageId) {
   return parts.length ? parts : [raw || ''];
 }
 
-function directorPrompt(messageId, force) {
+function directorPrompt(messageId, force, anchorNames = []) {
   const s = settings();
   const conversation = conversationFor(messageId);
   const paragraphs = latestParagraphs(messageId);
@@ -234,6 +234,12 @@ function directorPrompt(messageId, force) {
   const triggerRule = force
     ? 'This trigger is mandatory. generate must be true.'
     : 'Only set generate=true when this reply contains at least one visually distinct moment worth illustrating. Pure small talk or a reply with no meaningful visual change may be skipped.';
+  const knownAnchors = Array.isArray(anchorNames)
+    ? anchorNames.map((name) => String(name || '').trim()).filter(Boolean)
+    : [];
+  const anchorCatalog = knownAnchors.length
+    ? knownAnchors.map((name) => '[' + name + ']').join(', ')
+    : '(none)';
   return [
     'You are the visual director for an ongoing roleplay. Read the latest reply as numbered paragraphs and choose where images belong inside that reply.',
     '',
@@ -249,7 +255,12 @@ function directorPrompt(messageId, force) {
     '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
     '- Focus on action, pose, expression, camera, environment, explicit clothing, lighting, atmosphere, and important props.',
-    '- Do not invent fixed character appearance such as hair color, eye color, body type, species traits, or facial features. Isolde.nai character anchors handle appearance.',
+    '- Known character anchors: ' + anchorCatalog,
+    '- Infer which known characters are visually present in each scene from the conversation context, including nicknames, titles, pronouns, and indirect references.',
+    '- For every visually present known character, include that character\'s exact [AnchorName] placeholder once in the scene prompt.',
+    '- Use only names from Known character anchors. Never invent or rewrite anchor names.',
+    '- If a character identity is genuinely ambiguous, omit that placeholder instead of guessing.',
+    '- Do not invent fixed character appearance such as hair color, eye color, body type, species traits, or facial features. The [AnchorName] placeholders are expanded by Isolde.nai.',
     '- Preserve explicit visual details from the conversation.',
     '- If generate=false, scenes must be [].',
     '',
@@ -306,7 +317,16 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
 
 async function planScenes(messageId, force) {
   setState('judging', force ? '正在整理这一幕…' : '正在判断这一幕…');
-  const raw = await generateQuietPrompt({ quietPrompt: directorPrompt(messageId, force) });
+  let anchorNames = [];
+  try {
+    const catalog = await bridgeRequest('getAnchors', {}, 60000);
+    anchorNames = Array.isArray(catalog && catalog.anchors)
+      ? catalog.anchors.map((item) => String((item && item.name) || item || '').trim()).filter(Boolean)
+      : [];
+  } catch (error) {
+    console.warn('[Isolde.nai] character anchor catalog unavailable', error);
+  }
+  const raw = await generateQuietPrompt({ quietPrompt: directorPrompt(messageId, force, anchorNames) });
   return parseDirectorReply(raw, settings().count, force, latestParagraphs(messageId).length);
 }
 
