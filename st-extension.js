@@ -422,57 +422,143 @@ async function attachResults(results, messageId, scenePlans = []) {
 }
 
 
+function queueDecorate(messageId) {
+  requestAnimationFrame(() => {
+    setTimeout(() => decorateMessageMedia(messageId), 120);
+  });
+}
+
+function normalizeAnchorText(value) {
+  return String(value || '').replace(/\s+/g, ' ').trim();
+}
+
+function findParagraphTarget(textRoot, media) {
+  const blocks = Array.from(textRoot.children).filter((element) => !element.classList.contains('isolde-inline-media-slot'));
+  if (!blocks.length) return textRoot;
+
+  const anchor = normalizeAnchorText(media.isolde_anchor_text);
+  if (anchor) {
+    const shortAnchor = anchor.slice(0, 72);
+    const match = blocks.find((element) => normalizeAnchorText(element.textContent).includes(shortAnchor));
+    if (match) return match;
+  }
+
+  const paragraph = clampInt(media.isolde_after_paragraph, 1, blocks.length, blocks.length);
+  return blocks[Math.max(0, paragraph - 1)] || blocks[blocks.length - 1];
+}
+
+function createMediaTools(messageId, mediaIndex, media) {
+  const tools = document.createElement('div');
+  tools.className = 'isolde-media-tools';
+
+  const reroll = document.createElement('button');
+  reroll.type = 'button';
+  reroll.textContent = '重Roll';
+  reroll.title = '保留画面词，换一个新 seed';
+
+  const sameSeed = document.createElement('button');
+  sameSeed.type = 'button';
+  sameSeed.textContent = '同seed';
+  sameSeed.title = '保留当前 seed 再生成一张';
+
+  const download = document.createElement('button');
+  download.type = 'button';
+  download.textContent = '下载';
+  download.title = '保存 PNG';
+
+  const remove = document.createElement('button');
+  remove.type = 'button';
+  remove.className = 'isolde-delete';
+  remove.textContent = '删除';
+  remove.title = '从楼层、服务器和 Isolde.nai 图库删除这张图';
+
+  reroll.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void rerollMedia(messageId, mediaIndex, false, reroll, sameSeed, download, remove);
+  });
+
+  sameSeed.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void rerollMedia(messageId, mediaIndex, true, reroll, sameSeed, download, remove);
+  });
+
+  download.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void downloadIsoldeMedia(media, download);
+  });
+
+  remove.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void deleteIsoldeMedia(messageId, mediaIndex, reroll, sameSeed, download, remove);
+  });
+
+  tools.append(reroll, sameSeed, download, remove);
+  return tools;
+}
+
 function decorateMessageMedia(messageId) {
   const context = getContext();
   const message = context && context.chat && context.chat[Number(messageId)];
   if (!message || !message.extra || !Array.isArray(message.extra.media)) return;
 
   const root = document.querySelector('#chat .mes[mesid="' + messageId + '"]');
-  if (!root) return;
+  const textRoot = root && root.querySelector('.mes_text');
+  const mediaWrapper = root && root.querySelector('.mes_media_wrapper');
+  if (!root || !textRoot || !mediaWrapper) return;
 
-  root.querySelectorAll('.mes_media_container[data-index]').forEach((container) => {
+  const fresh = Array.from(mediaWrapper.querySelectorAll('.mes_img_container[data-index]'))
+    .filter((container) => {
+      const index = Number(container.getAttribute('data-index'));
+      const media = message.extra.media[index];
+      return media && media.source === 'Isolde.nai';
+    });
+
+  if (!fresh.length) {
+    root.querySelectorAll('.isolde-inline-image').forEach((container) => {
+      if (!container.querySelector('.isolde-media-tools')) {
+        const index = Number(container.getAttribute('data-index'));
+        const media = message.extra.media[index];
+        if (media && media.source === 'Isolde.nai') container.appendChild(createMediaTools(messageId, index, media));
+      }
+    });
+    return;
+  }
+
+  root.querySelectorAll('.isolde-inline-media-slot').forEach((slot) => slot.remove());
+
+  const slots = new Map();
+  fresh.sort((a, b) => Number(a.getAttribute('data-index')) - Number(b.getAttribute('data-index')));
+
+  for (const container of fresh) {
     const mediaIndex = Number(container.getAttribute('data-index'));
     const media = message.extra.media[mediaIndex];
-    if (!media || media.source !== 'Isolde.nai') return;
-    if (container.querySelector('.isolde-media-tools')) return;
+    if (!media || media.source !== 'Isolde.nai') continue;
 
-    const tools = document.createElement('div');
-    tools.className = 'isolde-media-tools';
+    const target = findParagraphTarget(textRoot, media);
+    const paragraphKey = String(clampInt(media.isolde_after_paragraph, 1, 9999, 9999)) + ':' + normalizeAnchorText(media.isolde_anchor_text).slice(0, 72);
 
-    const reroll = document.createElement('button');
-    reroll.type = 'button';
-    reroll.textContent = '重Roll';
-    reroll.title = '保留画面词，换一个新 seed';
-    reroll.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void rerollMedia(messageId, mediaIndex, false, reroll, sameSeed);
-    });
+    let slot = slots.get(paragraphKey);
+    if (!slot) {
+      slot = document.createElement('div');
+      slot.className = 'isolde-inline-media-slot';
+      slot.dataset.paragraph = String(media.isolde_after_paragraph || '');
+      if (target === textRoot) textRoot.appendChild(slot);
+      else target.insertAdjacentElement('afterend', slot);
+      slots.set(paragraphKey, slot);
+    }
 
-    const sameSeed = document.createElement('button');
-    sameSeed.type = 'button';
-    sameSeed.textContent = '同seed';
-    sameSeed.title = '保留当前 seed 重新生成';
-    sameSeed.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void rerollMedia(messageId, mediaIndex, true, reroll, sameSeed);
-    });
-
-    const remove = document.createElement('button');
-    remove.type = 'button';
-    remove.className = 'isolde-delete';
-    remove.textContent = '删除';
-    remove.title = '从楼层、服务器和 Isolde.nai 图库删除这张图';
-    remove.addEventListener('click', (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      void deleteIsoldeMedia(messageId, mediaIndex, reroll, sameSeed, remove);
-    });
-
-    tools.append(reroll, sameSeed, remove);
-    container.appendChild(tools);
-  });
+    container.classList.add('isolde-inline-image');
+    const nativeControls = container.querySelector('.mes_img_controls');
+    if (nativeControls) nativeControls.style.display = 'none';
+    if (!container.querySelector('.isolde-media-tools')) {
+      container.appendChild(createMediaTools(messageId, mediaIndex, media));
+    }
+    slot.appendChild(container);
+  }
 }
 
 function decorateAllIsoldeMedia() {
@@ -481,9 +567,60 @@ function decorateAllIsoldeMedia() {
   chat.forEach((message, index) => {
     if (message && message.extra && Array.isArray(message.extra.media)
       && message.extra.media.some((media) => media && media.source === 'Isolde.nai')) {
-      decorateMessageMedia(index);
+      queueDecorate(index);
     }
   });
+}
+
+function isIOSLike() {
+  return /iPad|iPhone|iPod/.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+}
+
+function fallbackBlobDownload(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement('a');
+  anchor.href = url;
+  anchor.download = fileName;
+  anchor.style.display = 'none';
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 60000);
+}
+
+async function downloadIsoldeMedia(media, button) {
+  if (!media || !media.url) return;
+  if (button) button.disabled = true;
+  try {
+    const response = await fetch(media.url, { cache: 'no-store' });
+    if (!response.ok) throw new Error('图片读取失败');
+    const original = await response.blob();
+    const blob = original.type === 'image/png' ? original : new Blob([original], { type: 'image/png' });
+    const seed = String(media.isolde_seed || '').trim();
+    const fileName = 'isolde-' + (seed || Date.now()) + '.png';
+
+    if (isIOSLike() && navigator.share && typeof File !== 'undefined') {
+      const file = new File([blob], fileName, { type: 'image/png' });
+      const shareData = { files: [file] };
+      try {
+        if (!navigator.canShare || navigator.canShare(shareData)) {
+          await navigator.share(shareData);
+          return;
+        }
+      } catch (error) {
+        if (error && error.name === 'AbortError') return;
+        console.warn('[Isolde.nai] iOS share failed, falling back to download', error);
+      }
+    }
+
+    fallbackBlobDownload(blob, fileName);
+  } catch (error) {
+    console.error('[Isolde.nai] download failed', error);
+    toast((error && error.message) || '下载失败', 'error');
+  } finally {
+    if (button) button.disabled = false;
+  }
 }
 
 async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
