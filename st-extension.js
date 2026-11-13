@@ -92,7 +92,12 @@ function createUi() {
   orb.title = 'Isolde.nai';
   orb.setAttribute('aria-label', '打开 Isolde.nai');
   orb.dataset.state = 'idle';
-  orb.innerHTML = '<span class="isolde-orb-star" aria-hidden="true">✦</span>';
+  const orbImage = document.createElement('img');
+  orbImage.className = 'isolde-orb-image';
+  orbImage.alt = '';
+  orbImage.setAttribute('aria-hidden', 'true');
+  orbImage.src = new URL('./assets/isolde-orb.jpg', import.meta.url).href;
+  orb.appendChild(orbImage);
 
   popover = document.createElement('section');
   popover.id = 'isolde-nai-popover';
