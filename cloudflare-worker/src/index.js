@@ -1,6 +1,34 @@
-const ALLOWED_ORIGINS = new Set([
+const PUBLIC_ORIGINS = new Set([
   "https://abandonyazi.github.io",
+  "https://isolde-nai.de5.net",
 ]);
+
+function isPrivateIpv4(hostname) {
+  const parts = hostname.split(".").map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isInteger(part) || part < 0 || part > 255)) return false;
+  return parts[0] === 10
+    || parts[0] === 127
+    || (parts[0] === 192 && parts[1] === 168)
+    || (parts[0] === 172 && parts[1] >= 16 && parts[1] <= 31)
+    || (parts[0] === 100 && parts[1] >= 64 && parts[1] <= 127);
+}
+
+function isAllowedOrigin(origin) {
+  if (PUBLIC_ORIGINS.has(origin)) return true;
+  try {
+    const url = new URL(origin);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return false;
+    const host = url.hostname.toLowerCase();
+    return host === "localhost"
+      || host === "::1"
+      || host.endsWith(".localhost")
+      || host.endsWith(".local")
+      || host.endsWith(".ts.net")
+      || isPrivateIpv4(host);
+  } catch {
+    return false;
+  }
+}
 
 const ROUTES = new Map([
   ["/user/subscription", new Set(["GET"])],
@@ -24,7 +52,7 @@ function json(message, status, origin = "") {
     "Cache-Control": "no-store",
     "X-Robots-Tag": "noindex",
   });
-  if (origin && ALLOWED_ORIGINS.has(origin)) {
+  if (origin && isAllowedOrigin(origin)) {
     for (const [key, value] of Object.entries(cors(origin))) headers.set(key, value);
   }
   return new Response(JSON.stringify({ message }), { status, headers });
@@ -34,7 +62,7 @@ export default {
   async fetch(request) {
     const origin = request.headers.get("Origin") || "";
 
-    if (!ALLOWED_ORIGINS.has(origin)) {
+    if (!isAllowedOrigin(origin)) {
       return json("Origin not allowed", 403);
     }
 
