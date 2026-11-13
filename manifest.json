@@ -6,8 +6,8 @@
   "js": "st-extension.js",
   "css": "st-extension.css",
   "author": "abandonyazi",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "homePage": "https://github.com/abandonyazi/Isolde.nai",
   "auto_update": true,
-  "description": "Isolde.nai for SillyTavern: scene-point detection, opt-in inline generation, and the full NAI workbench."
+  "description": "Isolde.nai for SillyTavern: scene-point detection, context-aware character anchors, opt-in inline generation, and the full NAI workbench."
 }
