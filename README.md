@@ -63,3 +63,10 @@ Images created by the extension keep their scene prompt and seed in message medi
 - Other images in the same message stay untouched.
 
 The web workbench also supports portable configuration export/import for presets, anchors, settings, Reference, Vibe presets, and watermark assets. Tokens and gallery images are intentionally excluded.
+
+
+### Paragraph-aware placement
+
+The SillyTavern extension can place each generated image directly after the paragraph whose scene it illustrates. The director stores both a paragraph number and a short text anchor so images return to the same narrative position after chat rerenders.
+
+Each Isolde.nai chat image provides **重Roll**, **同seed**, **下载**, and **删除** controls. Rerolls keep the original image and add another variant at the same scene position. On iOS, Download prefers the native file share flow so PNG files do not open in Safari's preview page.
