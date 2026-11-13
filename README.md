@@ -4,7 +4,7 @@ A lightweight mobile-first NovelAI image workbench.
 
 ## Features
 
-- Prompt presets and negative prompts
+- Prompt presets and negative prompts, including one-click migration from 智绘姬 / st-chatu8 inside SillyTavern
 - Local character anchors with `[character name]` placeholder expansion
 - Quality-tag positioning and protected `TEXT:` blocks
 - Seed regeneration and multiple canvas presets
@@ -26,7 +26,7 @@ No API token is included in the source code.
 
 ## Cloudflare Worker
 
-The public GitHub Pages build uses a small Cloudflare Worker as its NovelAI CORS proxy.
+The public GitHub Pages build uses a small Cloudflare Worker as its NovelAI CORS proxy. The bundled proxy also accepts common local/LAN/Tailscale SillyTavern origins; remote custom-domain SillyTavern deployments should use their own proxy or custom endpoint.
 
 [![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/abandonyazi/Isolde.nai/tree/main/cloudflare-worker)
 
@@ -46,10 +46,14 @@ The extension adds a small floating Isolde.nai orb beside the chat. Tap it to ch
 - **Smart**: every N character replies, judge whether the current scene is visually worth drawing.
 - **Fixed**: every N character replies, always draw.
 - **Manual**: only draw when the user taps “画这一幕”.
-- **Images per trigger**: 1–12 images. The director produces different shots/compositions for the same scene.
+- **Images per trigger**: 1–12 scene points. The director can place them after different paragraphs.
 - **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, and connection settings.
 
-Generated images are attached to the SillyTavern message that triggered them and saved through SillyTavern's image storage.
+Automatic detection is opt-in at the image level: the director inserts inline generation placeholders first. NovelAI is called only after the user taps **生成** on a placeholder, which avoids firing several image requests at once.
+
+For scene planning, the extension can read recent chat context, the current/recent character cards, the user's persona, activated World Info, and the local Isolde.nai character-anchor library. Characters without a saved anchor can still be drawn from card/World Info/story details without being silently added to the permanent library.
+
+Generated images are attached to the SillyTavern message that triggered them and saved through SillyTavern's image storage. NovelAI 4.5/V5 scenes use native per-character prompts so multi-character appearance tags stay separated.
 
 The hosted web app remains available independently; installing the extension does not replace it.
 
