@@ -537,12 +537,40 @@ function ucPresetNoneIndex(model) {
   if (model.startsWith('nai-diffusion-4')) return 2;
   return 4;
 }
+function normalizeCharacterCaption(value) {
+  return String(value || '').split(',').map((part)=>{
+    const tag=part.trim();
+    if (/^\d+\s*girls?$/i.test(tag)) return 'girl';
+    if (/^\d+\s*boys?$/i.test(tag)) return 'boy';
+    return tag;
+  }).filter(Boolean).join(', ');
+}
+function supportsCharacterPrompts(model) {
+  return model.startsWith('nai-diffusion-5') || model.includes('nai-diffusion-4-5');
+}
+function resolveAutomaticCharacters(value) {
+  if(!Array.isArray(value))return[];
+  return value.map((character)=>{
+    if(!character||typeof character!=='object')return null;
+    const anchorName=String(character.anchor||'').trim();
+    const saved=anchorName?anchors.find((item)=>item.name===anchorName):null;
+    const savedPrompt=String((saved&&saved.prompt)||'').trim();
+    const currentPrompt=String(character.prompt||character.appearance||'').trim();
+    const prompt=cleanJoin([savedPrompt,currentPrompt]);
+    if(!prompt)return null;
+    return {name:String(character.name||anchorName||'').trim(),anchor:saved?saved.name:'',prompt};
+  }).filter(Boolean);
+}
 function buildNaiPayload(seed=null,promptOverride=null) {
   const source=promptOverride&&typeof promptOverride==='object'?promptOverride:assemblePrompts();
   const positive=String(source.positive||'');
   const negative=String(source.negative||'');
   const model=els.model.value;
   const isV5=model.startsWith('nai-diffusion-5');
+  const characters=resolveAutomaticCharacters(source.characters);
+  const charCaptions=supportsCharacterPrompts(model)
+    ? characters.map((character)=>({char_caption:normalizeCharacterCaption(character.prompt),centers:[{x:0.5,y:0.5}]}))
+    : [];
   const width=Math.round(clampNumber(els.width.value,256,2048,1024)/64)*64;
   const height=Math.round(clampNumber(els.height.value,256,2048,1024)/64)*64;
   const params={
@@ -556,9 +584,12 @@ function buildNaiPayload(seed=null,promptOverride=null) {
     normalize_reference_strength_multiple:true,inpaintImg2ImgStrength:1,
     legacy_uc:false,negative_prompt:negative,deliberate_euler_ancestral_bug:false,prefer_brownian:true,
     image_format:'png',stream:'msgpack',
-    v4_prompt:{caption:{base_caption:positive,char_captions:[]},use_coords:false,use_order:true},
-    v4_negative_prompt:{caption:{base_caption:negative,char_captions:[]},legacy_uc:false},
-characterPrompts:[]
+    v4_prompt:{caption:{base_caption:positive,char_captions:charCaptions},use_coords:false,use_order:true},
+    v4_negative_prompt:{
+      caption:{base_caption:negative,char_captions:charCaptions.map(()=>({char_caption:'',centers:[{x:0.5,y:0.5}]}))},
+      legacy_uc:false
+    },
+    characterPrompts:[]
   };
   if (seed !== null && seed !== undefined && String(seed).trim() !== '') {
     params.seed = Number(seed);
@@ -631,7 +662,11 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
       createdAt:Date.now()
     });
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
-    return {blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,width:Number(els.width.value),height:Number(els.height.value),galleryId};
+    return {
+      blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,
+      width:Number(els.width.value),height:Number(els.height.value),galleryId,
+      characters:resolveAutomaticCharacters(promptSource.characters)
+    };
   }catch(e){
     console.error(e); setConnectionState('error','生成失败');
     const msg=e?.message||String(e); showToast(msg.slice(0,200));
@@ -1888,27 +1923,33 @@ window.addEventListener('message',async(event)=>{
     return;
   }
   if(data.type!=='generate')return;
-  const scenes=Array.isArray(data.scenes)?data.scenes.map(x=>String(x||'').trim()).filter(Boolean):[];
+  const scenePlans=Array.isArray(data.scenePlans)&&data.scenePlans.length
+    ? data.scenePlans.map((item)=>({
+        prompt:String((item&&item.prompt)||'').trim(),
+        characters:Array.isArray(item&&item.characters)?item.characters:[],
+      })).filter((item)=>item.prompt)
+    : (Array.isArray(data.scenes)?data.scenes.map((value)=>({prompt:String(value||'').trim(),characters:[]})).filter((item)=>item.prompt):[]);
   const seeds=Array.isArray(data.seeds)?data.seeds:[];
   const promptOverrides=Array.isArray(data.promptOverrides)?data.promptOverrides:[];
-  if(!scenes.length){
+  if(!scenePlans.length){
     event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:'没有收到画面词'},event.origin);
     return;
   }
   const previousScene=els.scenePrompt.value;
   const results=[];
   try{
-    for(let i=0;i<scenes.length;i++){
-      const scene=scenes[i];
+    for(let i=0;i<scenePlans.length;i++){
+      const scenePlan=scenePlans[i];
+      const scene=scenePlan.prompt;
       els.scenePrompt.value=scene;
       updateAssembly();
       const requestedSeed=String(seeds[i]??'').trim();
       const seed=requestedSeed||String(Math.floor(Math.random()*4294967295));
       const override=promptOverrides[i]&&String(promptOverrides[i].positive||'').trim()?promptOverrides[i]:null;
-      const automaticPrompt=override||assemblePrompts(false);
+      const automaticPrompt={...(override||assemblePrompts(false)),characters:scenePlan.characters};
       const result=await generate({forceSeed:seed,throwOnError:true,promptOverride:automaticPrompt});
       if(!result?.blob)throw new Error('图片生成没有返回结果');
-      results.push({...result,scenePrompt:scene});
+      results.push({...result,scenePrompt:scene,characters:result.characters||resolveAutomaticCharacters(scenePlan.characters)});
     }
     event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:true,results},event.origin);
   }catch(e){
