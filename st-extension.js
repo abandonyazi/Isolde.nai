@@ -41,7 +41,7 @@ function settings() {
   value.interval = clampInt(value.interval, 1, 999, DEFAULTS.interval);
   value.count = clampInt(value.count, 1, 12, DEFAULTS.count);
   value.contextMessages = clampInt(value.contextMessages, 4, 40, DEFAULTS.contextMessages);
-  if (!['smart', 'fixed', 'manual'].includes(value.mode)) value.mode = DEFAULTS.mode;
+  if (!['smart', 'fixed'].includes(value.mode)) value.mode = DEFAULTS.mode;
   value.enabled = Boolean(value.enabled);
   return value;
 }
@@ -75,13 +75,15 @@ function renderControls() {
   if (interval) interval.value = String(s.interval);
   if (count) count.value = String(s.count);
   popover.querySelectorAll('[data-isolde-auto-field]').forEach((el) => {
-    el.disabled = s.mode === 'manual';
+    el.disabled = !s.enabled;
   });
+  if (mode) mode.disabled = !s.enabled;
+  if (count) count.disabled = !s.enabled;
   const progress = popover.querySelector('[data-isolde-progress]');
   if (progress) {
-    progress.textContent = s.mode === 'manual'
-      ? '手动模式'
-      : '下一次检查：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮';
+    progress.textContent = s.enabled
+      ? '下一次检查：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮'
+      : '酒馆配图已关闭';
   }
 }
 
@@ -107,9 +109,9 @@ function createUi() {
       '<div><strong>Isolde.nai</strong><div class="isolde-status" data-isolde-status>待机</div></div>',
       '<span class="isolde-status" data-isolde-progress></span>',
     '</div>',
-    '<div class="isolde-toggle"><span>自动检测生图点</span><input data-isolde-enabled type="checkbox" aria-label="自动检测生图点开关"></div>',
+    '<div class="isolde-toggle"><span>启用酒馆配图</span><input data-isolde-enabled type="checkbox" aria-label="启用酒馆配图"></div>',
     '<div class="isolde-grid">',
-      '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option><option value="manual">仅手动</option></select></label>',
+      '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option></select></label>',
       '<label>每次张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
       '<label style="grid-column:1 / -1">每隔多少轮<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
@@ -1197,7 +1199,7 @@ async function runIllustration(messageId, force = false) {
 async function onCharacterRendered(messageId, source) {
   queueDecorate(messageId);
   const s = settings();
-  if (!s.enabled || s.mode === 'manual') return;
+  if (!s.enabled) return;
   if (source === 'extension') return;
 
   const context = getContext();
