@@ -445,9 +445,14 @@ function resetForChat() {
   setState('idle', '待机');
 }
 
-jQuery(() => {
-  settings();
-  createUi();
-  eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterRendered);
-  eventSource.on(event_types.CHAT_CHANGED, resetForChat);
-});
+const onReady = globalThis.jQuery || globalThis.$;
+if (onReady) {
+  onReady(() => {
+    settings();
+    createUi();
+    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterRendered);
+    eventSource.on(event_types.CHAT_CHANGED, resetForChat);
+  });
+} else {
+  console.error('[Isolde.nai] SillyTavern jQuery runtime was not found.');
+}
