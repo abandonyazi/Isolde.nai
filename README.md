@@ -52,3 +52,14 @@ The extension adds a small floating Isolde.nai orb beside the chat. Tap it to ch
 Generated images are attached to the SillyTavern message that triggered them and saved through SillyTavern's image storage.
 
 The hosted web app remains available independently; installing the extension does not replace it.
+
+
+### SillyTavern image controls
+
+Images created by the extension keep their scene prompt and seed in message media metadata.
+
+- **重Roll** regenerates only that image with a new seed.
+- **同seed** regenerates only that image with its saved seed.
+- Other images in the same message stay untouched.
+
+The web workbench also supports portable configuration export/import for presets, anchors, settings, Reference, Vibe presets, and watermark assets. Tokens and gallery images are intentionally excluded.
