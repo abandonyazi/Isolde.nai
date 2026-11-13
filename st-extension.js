@@ -4,7 +4,7 @@ import {
   event_types,
   generateQuietPrompt,
   saveSettingsDebounced,
-} from '../../../script.js';
+} from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 import { getContext } from '../../../st-context.js';
 import { saveBase64AsFile } from '../../../utils.js';
