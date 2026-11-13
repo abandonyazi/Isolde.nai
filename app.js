@@ -535,8 +535,10 @@ function ucPresetNoneIndex(model) {
   if (model.startsWith('nai-diffusion-4')) return 2;
   return 4;
 }
-function buildNaiPayload(seed=null) {
-  const {positive,negative}=assemblePrompts();
+function buildNaiPayload(seed=null,promptOverride=null) {
+  const source=promptOverride&&typeof promptOverride==='object'?promptOverride:assemblePrompts();
+  const positive=String(source.positive||'');
+  const negative=String(source.negative||'');
   const model=els.model.value;
   const isV5=model.startsWith('nai-diffusion-5');
   const width=Math.round(clampNumber(els.width.value,256,2048,1024)/64)*64;
@@ -587,18 +589,19 @@ function parseOpenAiImage(text) {
   for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
   return new Blob([bytes],{type:'image/png'});
 }
-async function generate({forceSeed=null,throwOnError=false}={}) {
+async function generate({forceSeed=null,throwOnError=false,promptOverride=null}={}) {
   if(busy){if(throwOnError)throw new Error('上一张图片还在生成');return;}
   rehydrateConnectionFields();
   const key=els.apiKey.value.trim() || loadSavedToken();
   if(!key){ goView('settings'); showToast('先填 Token'); if(throwOnError)throw new Error('先在完整工作台填写 NAI Token'); return; }
   if(!els.apiKey.value.trim()) els.apiKey.value=key;
   persistTokenIfRemembered();
-  if(!assemblePrompts().positive.trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); if(throwOnError)throw new Error('画面词和预设都是空的'); return; }
+  const promptSource=promptOverride&&typeof promptOverride==='object'?promptOverride:assemblePrompts();
+  if(!String(promptSource.positive||'').trim()){ showToast('画面词和预设都是空的'); els.scenePrompt.focus(); if(throwOnError)throw new Error('画面词和预设都是空的'); return; }
   let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);if(throwOnError)throw e;return;}
   const seed = forceSeed !== null ? String(forceSeed).trim() : els.seed.value.trim();
   currentSeed = seed;
-  const naiBody=buildNaiPayload(seed || null);
+  const naiBody=buildNaiPayload(seed || null,promptOverride);
   busy=true; els.generateBtn.disabled=true; els.generateLabel.textContent='生成中'; els.generateSpinner.classList.remove('hidden'); setConnectionState('ready','正在生成…');
   try{
     await applyReferenceFeatures(naiBody,endpoint,key);
@@ -1722,6 +1725,8 @@ window.addEventListener('message',async(event)=>{
   if(event.origin!==window.location.origin||!data||data.source!=='isolde-nai-st'||!data.requestId)return;
   if(data.type!=='generate')return;
   const scenes=Array.isArray(data.scenes)?data.scenes.map(x=>String(x||'').trim()).filter(Boolean):[];
+  const seeds=Array.isArray(data.seeds)?data.seeds:[];
+  const promptOverrides=Array.isArray(data.promptOverrides)?data.promptOverrides:[];
   if(!scenes.length){
     event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:'没有收到画面词'},event.origin);
     return;
@@ -1729,12 +1734,16 @@ window.addEventListener('message',async(event)=>{
   const previousScene=els.scenePrompt.value;
   const results=[];
   try{
-    for(const scene of scenes){
+    for(let i=0;i<scenes.length;i++){
+      const scene=scenes[i];
       els.scenePrompt.value=scene;
       updateAssembly();
-      const result=await generate({forceSeed:'',throwOnError:true});
+      const requestedSeed=String(seeds[i]??'').trim();
+      const seed=requestedSeed||String(Math.floor(Math.random()*4294967295));
+      const override=promptOverrides[i]&&String(promptOverrides[i].positive||'').trim()?promptOverrides[i]:null;
+      const result=await generate({forceSeed:seed,throwOnError:true,promptOverride:override});
       if(!result?.blob)throw new Error('图片生成没有返回结果');
-      results.push(result);
+      results.push({...result,scenePrompt:scene});
     }
     event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:true,results},event.origin);
   }catch(e){
