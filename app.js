@@ -315,11 +315,13 @@ function applyQualityTags(prompt) {
   }
   return p ? `${p.replace(/[\s,]+$/,'')}, ${q}` : q;
 }
-function assemblePrompts() {
+function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
   const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
   const explicitPlaceholderNames = characterPlaceholderNames(cleanJoin([presetPrompt, els.scenePrompt.value]));
-  const anchorText = selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt);
+  const anchorText = includeSelectedAnchors
+    ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt)
+    : [];
   const positive = expandCharacterPlaceholders(cleanJoin([presetPrompt, ...anchorText, els.scenePrompt.value]));
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
   return { positive: applyQualityTags(positive), negative };
@@ -1867,6 +1869,15 @@ els.watermarkOpacity?.addEventListener('change',saveSettings);
 window.addEventListener('message',async(event)=>{
   const data=event.data;
   if(event.origin!==window.location.origin||!data||data.source!=='isolde-nai-st'||!data.requestId)return;
+  if(data.type==='getAnchors'){
+    event.source?.postMessage({
+      source:'isolde-nai-web',
+      requestId:data.requestId,
+      ok:true,
+      anchors:anchors.map((item)=>({id:item.id,name:item.name})).filter((item)=>item.name)
+    },event.origin);
+    return;
+  }
   if(data.type==='deleteGallery'){
     try{
       const deleted=await deleteGalleryBridgeItem(data);
@@ -1894,7 +1905,8 @@ window.addEventListener('message',async(event)=>{
       const requestedSeed=String(seeds[i]??'').trim();
       const seed=requestedSeed||String(Math.floor(Math.random()*4294967295));
       const override=promptOverrides[i]&&String(promptOverrides[i].positive||'').trim()?promptOverrides[i]:null;
-      const result=await generate({forceSeed:seed,throwOnError:true,promptOverride:override});
+      const automaticPrompt=override||assemblePrompts(false);
+      const result=await generate({forceSeed:seed,throwOnError:true,promptOverride:automaticPrompt});
       if(!result?.blob)throw new Error('图片生成没有返回结果');
       results.push({...result,scenePrompt:scene});
     }
