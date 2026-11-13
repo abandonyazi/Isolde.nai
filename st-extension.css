@@ -36,3 +36,8 @@
 
 .isolde-media-tools .isolde-delete{background:rgba(126,53,65,.74);border-color:rgba(255,190,198,.22)}
 .isolde-media-tools .isolde-delete:hover{background:rgba(151,61,75,.86)}
+
+.isolde-inline-media-slot{display:grid;gap:10px;margin:10px 0 14px}
+.isolde-inline-media-slot .isolde-inline-image{width:min(100%,760px);max-width:100%;margin:0;justify-self:start;position:relative}
+.isolde-inline-media-slot .mes_img{max-width:100%;height:auto;border-radius:12px}
+.isolde-inline-media-slot .isolde-media-tools{opacity:.94}
