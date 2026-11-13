@@ -618,7 +618,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
     }
     showResult(blob,seed);
     const p=currentPreset();
-    await addGallery(blob,{
+    const galleryId=await addGallery(blob,{
       seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
@@ -629,7 +629,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
       createdAt:Date.now()
     });
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
-    return {blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,width:Number(els.width.value),height:Number(els.height.value)};
+    return {blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,width:Number(els.width.value),height:Number(els.height.value),galleryId};
   }catch(e){
     console.error(e); setConnectionState('error','生成失败');
     const msg=e?.message||String(e); showToast(msg.slice(0,200));
@@ -1448,8 +1448,46 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
 }
 async function addGallery(blob,meta){
   const db=await openDb();
-  await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').add({blob,...meta});tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
+  let id=null;
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('history','readwrite');
+    const req=tx.objectStore('history').add({blob,...meta});
+    req.onsuccess=()=>{id=req.result;};
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error);
+    tx.onabort=()=>reject(tx.error||new Error('图库写入失败'));
+  });
   db.close();
+  return id;
+}
+async function deleteGalleryRecord(id){
+  if(id===null||id===undefined||String(id).trim()==='')return false;
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('history','readwrite');
+    tx.objectStore('history').delete(Number(id));
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error);
+    tx.onabort=()=>reject(tx.error||new Error('图库删除失败'));
+  });
+  db.close();
+  return true;
+}
+async function deleteGalleryBridgeItem({galleryId=null,seed='',scenePrompt=''}={}){
+  let id=galleryId;
+  if(id===null||id===undefined||String(id).trim()===''){
+    const items=await getGallery();
+    const wantedSeed=String(seed??'').trim();
+    const wantedScene=String(scenePrompt??'').trim();
+    const match=items.find(item=>{
+      const sameSeed=wantedSeed&&String(item.seed??'').trim()===wantedSeed;
+      const sameScene=wantedScene&&String(item.scenePrompt??item.prompt??'').trim()===wantedScene;
+      return sameSeed&&sameScene;
+    });
+    id=match?.id??null;
+  }
+  if(id===null||id===undefined)return false;
+  return await deleteGalleryRecord(id);
 }
 async function getGallery(){
   const db=await openDb();const items=await new Promise((resolve,reject)=>{const tx=db.transaction('history','readonly');const req=tx.objectStore('history').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});db.close();return items.sort((a,b)=>(b.id||0)-(a.id||0));
@@ -1457,9 +1495,7 @@ async function getGallery(){
 async function deleteGalleryItem(id,card){
   const scrollTop=window.scrollY;
   const scrollLeft=window.scrollX;
-  const db=await openDb();
-  await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').delete(id);tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});
-  db.close();
+  await deleteGalleryRecord(id);
   if(card?.isConnected) card.remove();
   const remaining=els.galleryGrid.querySelectorAll('.gallery-card').length;
   els.galleryCount.textContent=`${remaining} 张 · 保存在此设备`;
@@ -1831,6 +1867,15 @@ els.watermarkOpacity?.addEventListener('change',saveSettings);
 window.addEventListener('message',async(event)=>{
   const data=event.data;
   if(event.origin!==window.location.origin||!data||data.source!=='isolde-nai-st'||!data.requestId)return;
+  if(data.type==='deleteGallery'){
+    try{
+      const deleted=await deleteGalleryBridgeItem(data);
+      event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:true,deleted},event.origin);
+    }catch(e){
+      event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:e?.message||String(e)},event.origin);
+    }
+    return;
+  }
   if(data.type!=='generate')return;
   const scenes=Array.isArray(data.scenes)?data.scenes.map(x=>String(x||'').trim()).filter(Boolean):[];
   const seeds=Array.isArray(data.seeds)?data.seeds:[];
