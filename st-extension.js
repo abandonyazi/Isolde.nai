@@ -740,10 +740,11 @@ function decorateAllIsoldeMedia() {
   const context = getContext();
   const chat = (context && context.chat) || [];
   chat.forEach((message, index) => {
-    if (message && message.extra && Array.isArray(message.extra.media)
-      && message.extra.media.some((media) => media && media.source === 'Isolde.nai')) {
-      queueDecorate(index);
-    }
+    const hasMedia = message && message.extra && Array.isArray(message.extra.media)
+      && message.extra.media.some((media) => media && media.source === 'Isolde.nai');
+    const hasPending = message && message.extra && Array.isArray(message.extra.isolde_pending_scenes)
+      && message.extra.isolde_pending_scenes.length > 0;
+    if (hasMedia || hasPending) queueDecorate(index);
   });
 }
 
