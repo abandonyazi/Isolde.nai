@@ -579,8 +579,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     const fileName = 'isolde_reroll_' + Date.now();
     const imagePath = await saveBase64AsFile(base64, 'Isolde.nai', fileName, 'png');
 
-    const oldUrl = media.url;
-    message.extra.media[mediaIndex] = {
+    const newMedia = {
       ...media,
       url: imagePath,
       title: result.scenePrompt || scenePrompt,
@@ -592,6 +591,8 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
     };
+    message.extra.media.splice(Number(mediaIndex) + 1, 0, newMedia);
+    message.extra.media_index = Number(mediaIndex) + 1;
 
     const jq = globalThis.jQuery || globalThis.$;
     const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
@@ -601,23 +602,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     }
     if (context.saveChat) await context.saveChat();
 
-    if (oldUrl && oldUrl !== imagePath) {
-      try { await deleteMediaFromServer(oldUrl, true); } catch {}
-    }
-
-    if (media.isolde_gallery_id || media.isolde_seed) {
-      try {
-        await bridgeRequest('deleteGallery', {
-          galleryId: media.isolde_gallery_id || '',
-          seed: media.isolde_seed || '',
-          scenePrompt: media.isolde_scene_prompt || media.title || '',
-        }, 60000);
-      } catch (error) {
-        console.warn('[Isolde.nai] old reroll gallery item cleanup failed', error);
-      }
-    }
-
-    setState('success', keepSeed ? '同 seed 重绘完成' : '重 Roll 完成');
+    setState('success', keepSeed ? '同 seed 新增 1 张' : '重 Roll 新增 1 张');
     setTimeout(() => setState('idle', '待机'), 1800);
   } catch (error) {
     console.error('[Isolde.nai] reroll failed', error);
