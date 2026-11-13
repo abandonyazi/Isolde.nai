@@ -226,7 +226,112 @@ function latestParagraphs(messageId) {
   return parts.length ? parts : [raw || ''];
 }
 
-function directorPrompt(messageId, force, anchorNames = []) {
+function substituteContextText(context, value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  try {
+    return typeof context?.substituteParams === 'function' ? String(context.substituteParams(raw) || '').trim() : raw;
+  } catch {
+    return raw;
+  }
+}
+
+function currentCharacterCard(messageId) {
+  const context = getContext();
+  if (!context) return '';
+  const message = context.chat && context.chat[Number(messageId)];
+  const speaker = String((message && message.name) || context.name2 || '').trim();
+  const characters = Array.isArray(context.characters) ? context.characters : [];
+  let character = null;
+
+  if (speaker) character = characters.find((item) => item && String(item.name || '').trim() === speaker) || null;
+  if (!character && context.characterId !== undefined && context.characterId !== null && context.characterId !== '') {
+    character = characters[Number(context.characterId)] || null;
+  }
+  if (!character) return '';
+
+  const fields = [
+    ['description', character.description],
+    ['personality', character.personality],
+    ['scenario', character.scenario],
+  ];
+  return fields
+    .map(([label, value]) => {
+      const text = substituteContextText(context, value);
+      return text ? label + ': ' + text : '';
+    })
+    .filter(Boolean)
+    .join('\n');
+}
+
+function currentPersona() {
+  const context = getContext();
+  if (!context || typeof context.substituteParams !== 'function') return '';
+  try {
+    return String(context.substituteParams('{{persona}}') || '').trim();
+  } catch {
+    return '';
+  }
+}
+
+function worldInfoScanText(messageId) {
+  const context = getContext();
+  const chat = (context && context.chat) || [];
+  const s = settings();
+  const start = Math.max(0, Number(messageId) - s.contextMessages + 1);
+  return chat.slice(start, Number(messageId) + 1)
+    .filter((message) => message && !message.is_system)
+    .map((message) => {
+      const speaker = message.name || (message.is_user ? context?.name1 || 'User' : context?.name2 || 'Character');
+      return speaker + ': ' + String(message.mes || '').trim();
+    })
+    .filter(Boolean);
+}
+
+function collectWorldInfoChunks(result) {
+  if (!result || typeof result !== 'object') return [];
+  const chunks = [];
+  const add = (value) => {
+    if (typeof value === 'string' && value.trim()) chunks.push(value.trim());
+  };
+  add(result.worldInfoBefore);
+  add(result.worldInfoAfter);
+  add(result.worldInfoString);
+  for (const item of Array.isArray(result.worldInfoDepth) ? result.worldInfoDepth : []) {
+    for (const entry of Array.isArray(item && item.entries) ? item.entries : []) add(entry);
+  }
+  for (const entry of Array.isArray(result.anBefore) ? result.anBefore : []) add(entry);
+  for (const entry of Array.isArray(result.anAfter) ? result.anAfter : []) add(entry);
+  return [...new Set(chunks)];
+}
+
+async function currentWorldInfo(messageId) {
+  const context = getContext();
+  if (!context || typeof context.getWorldInfoPrompt !== 'function') return '';
+  try {
+    const result = await context.getWorldInfoPrompt(worldInfoScanText(messageId), 1000000000, true);
+    return collectWorldInfoChunks(result)
+      .map((chunk) => substituteContextText(context, chunk))
+      .filter(Boolean)
+      .join('\n\n')
+      .slice(0, 14000);
+  } catch (error) {
+    console.warn('[Isolde.nai] world info unavailable', error);
+    return '';
+  }
+}
+
+function formatAnchorLibrary(anchorEntries) {
+  const entries = Array.isArray(anchorEntries) ? anchorEntries : [];
+  const lines = entries.map((item) => {
+    const name = String((item && item.name) || '').trim();
+    const prompt = String((item && item.prompt) || '').trim();
+    return name && prompt ? '- ' + name + ': ' + prompt : '';
+  }).filter(Boolean);
+  return lines.length ? lines.join('\n').slice(0, 16000) : '(empty)';
+}
+
+function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}) {
   const s = settings();
   const conversation = conversationFor(messageId);
   const paragraphs = latestParagraphs(messageId);
@@ -234,12 +339,10 @@ function directorPrompt(messageId, force, anchorNames = []) {
   const triggerRule = force
     ? 'This trigger is mandatory. generate must be true.'
     : 'Only set generate=true when this reply contains at least one visually distinct moment worth illustrating. Pure small talk or a reply with no meaningful visual change may be skipped.';
-  const knownAnchors = Array.isArray(anchorNames)
-    ? anchorNames.map((name) => String(name || '').trim()).filter(Boolean)
-    : [];
-  const anchorCatalog = knownAnchors.length
-    ? knownAnchors.map((name) => '[' + name + ']').join(', ')
-    : '(none)';
+  const anchorLibrary = formatAnchorLibrary(anchorEntries);
+  const charCard = String(sourceContext.charCard || '').trim() || '(unavailable)';
+  const persona = String(sourceContext.persona || '').trim() || '(unavailable)';
+  const worldInfo = String(sourceContext.worldInfo || '').trim() || '(none activated)';
   return [
     'You are the visual director for an ongoing roleplay. Read the latest reply as numbered paragraphs and choose where images belong inside that reply.',
     '',
@@ -254,15 +357,28 @@ function directorPrompt(messageId, force, anchorNames = []) {
     '- after_paragraph is 1-based and must point to the paragraph whose scene the image depicts.',
     '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
-    '- Focus on action, pose, expression, camera, environment, explicit clothing, lighting, atmosphere, and important props.',
-    '- Known character anchors: ' + anchorCatalog,
-    '- Infer which known characters are visually present in each scene from the conversation context, including nicknames, titles, pronouns, and indirect references.',
-    '- For every visually present known character, include that character\'s exact [AnchorName] placeholder once in the scene prompt.',
-    '- Use only names from Known character anchors. Never invent or rewrite anchor names.',
-    '- If a character identity is genuinely ambiguous, omit that placeholder instead of guessing.',
-    '- Do not invent fixed character appearance such as hair color, eye color, body type, species traits, or facial features. The [AnchorName] placeholders are expanded by Isolde.nai.',
-    '- Preserve explicit visual details from the conversation.',
+    '- Focus on action, pose, expression, camera, environment, clothing, lighting, atmosphere, and important props.',
+    '- Decide who is visibly present from all supplied sources and story continuity. A visible character does not need to exist in the fixed appearance library.',
+    '- Fixed appearance library is authoritative only for characters that actually match an entry. Copy that entry\'s appearance tags verbatim into the scene prompt once.',
+    '- For a visible character with no matching library entry, derive concise appearance tags from the character card, persona, activated world info, and story context. Do not refuse or omit the character merely because the library has no entry.',
+    '- Do not save or invent a permanent library entry. This request only creates the current scene prompt.',
+    '- One-off or unnamed characters may be drawn from explicit story details without being added to the library.',
+    '- Resolve names, nicknames, titles, pronouns, and indirect references from context instead of requiring literal name matches.',
+    '- If two possible identities remain genuinely ambiguous, prefer the interpretation best supported by the immediate scene and earlier context; do not merge two characters into one.',
+    '- Preserve explicit visual details from the conversation and avoid contradicting the fixed library.',
     '- If generate=false, scenes must be [].',
+    '',
+    'Fixed appearance library:',
+    anchorLibrary,
+    '',
+    'Current character card:',
+    charCard,
+    '',
+    'User persona:',
+    persona,
+    '',
+    'Activated world info:',
+    worldInfo,
     '',
     'Latest reply paragraphs:',
     numbered,
@@ -317,16 +433,23 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
 
 async function planScenes(messageId, force) {
   setState('judging', force ? '正在整理这一幕…' : '正在判断这一幕…');
-  let anchorNames = [];
+  let anchorEntries = [];
   try {
     const catalog = await bridgeRequest('getAnchors', {}, 60000);
-    anchorNames = Array.isArray(catalog && catalog.anchors)
-      ? catalog.anchors.map((item) => String((item && item.name) || item || '').trim()).filter(Boolean)
-      : [];
+    anchorEntries = Array.isArray(catalog && catalog.anchors) ? catalog.anchors : [];
   } catch (error) {
     console.warn('[Isolde.nai] character anchor catalog unavailable', error);
   }
-  const raw = await generateQuietPrompt({ quietPrompt: directorPrompt(messageId, force, anchorNames) });
+
+  const [worldInfo] = await Promise.all([currentWorldInfo(messageId)]);
+  const sourceContext = {
+    charCard: currentCharacterCard(messageId),
+    persona: currentPersona(),
+    worldInfo,
+  };
+  const raw = await generateQuietPrompt({
+    quietPrompt: directorPrompt(messageId, force, anchorEntries, sourceContext),
+  });
   return parseDirectorReply(raw, settings().count, force, latestParagraphs(messageId).length);
 }
 
