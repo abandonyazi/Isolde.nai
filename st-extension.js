@@ -369,45 +369,54 @@ function blobToBase64(blob) {
   });
 }
 
-async function attachResults(results, messageId) {
+async function attachResults(results, messageId, scenePlans = []) {
   const context = getContext();
   const message = context && context.chat && context.chat[Number(messageId)];
   if (!message) throw new Error('找不到触发绘图的聊天消息');
 
   if (!message.extra || typeof message.extra !== 'object') message.extra = {};
   if (!Array.isArray(message.extra.media)) message.extra.media = [];
-  message.extra.media_display = MEDIA_DISPLAY.GALLERY;
+  message.extra.media_display = MEDIA_DISPLAY.LIST;
   message.extra.inline_image = true;
+
+  const paragraphs = latestParagraphs(messageId);
 
   for (let index = 0; index < results.length; index++) {
     const result = results[index];
     if (!result || !(result.blob instanceof Blob)) continue;
+
+    const plan = scenePlans[index] || {};
+    const afterParagraph = clampInt(plan.afterParagraph, 1, Math.max(1, paragraphs.length), paragraphs.length || 1);
+    const anchorText = String(paragraphs[afterParagraph - 1] || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+
     const base64 = await blobToBase64(result.blob);
     const fileName = 'isolde_' + Date.now() + '_' + (index + 1);
     const imagePath = await saveBase64AsFile(base64, 'Isolde.nai', fileName, 'png');
+
     message.extra.media.push({
       url: imagePath,
-      title: result.scenePrompt || result.prompt || 'Isolde.nai',
+      title: result.scenePrompt || plan.prompt || result.prompt || 'Isolde.nai',
       type: MEDIA_TYPE.IMAGE,
       source: 'Isolde.nai',
       width: Number(result.width) || undefined,
       height: Number(result.height) || undefined,
-      isolde_scene_prompt: result.scenePrompt || '',
+      isolde_scene_prompt: result.scenePrompt || plan.prompt || '',
       isolde_prompt: result.prompt || '',
       isolde_negative: result.negative || '',
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
+      isolde_after_paragraph: afterParagraph,
+      isolde_anchor_text: anchorText,
     });
   }
 
   if (!message.extra.media.length) throw new Error('没有收到可插入聊天的图片');
-  message.extra.media_index = message.extra.media.length - 1;
 
   const jq = globalThis.jQuery || globalThis.$;
   const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
   if (element && element.length) {
     appendMediaToMessage(message, element, SCROLL_BEHAVIOR.KEEP);
-    decorateMessageMedia(messageId);
+    queueDecorate(messageId);
   }
   if (context.saveChat) await context.saveChat();
 }
