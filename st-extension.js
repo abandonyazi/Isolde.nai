@@ -102,7 +102,7 @@ function createUi() {
       '<div><strong>Isolde.nai</strong><div class="isolde-status" data-isolde-status>待机</div></div>',
       '<span class="isolde-status" data-isolde-progress></span>',
     '</div>',
-    '<div class="isolde-toggle"><span>自动绘图</span><input data-isolde-enabled type="checkbox" aria-label="自动绘图开关"></div>',
+    '<div class="isolde-toggle"><span>自动检测生图点</span><input data-isolde-enabled type="checkbox" aria-label="自动检测生图点开关"></div>',
     '<div class="isolde-grid">',
       '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option><option value="manual">仅手动</option></select></label>',
       '<label>每次张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
@@ -433,7 +433,10 @@ function normalizeAnchorText(value) {
 }
 
 function findParagraphTarget(textRoot, media) {
-  const blocks = Array.from(textRoot.children).filter((element) => !element.classList.contains('isolde-inline-media-slot'));
+  const blocks = Array.from(textRoot.children).filter((element) =>
+    !element.classList.contains('isolde-inline-media-slot')
+    && !element.classList.contains('isolde-pending-slot')
+  );
   if (!blocks.length) return textRoot;
 
   const anchor = normalizeAnchorText(media.isolde_anchor_text);
@@ -445,6 +448,173 @@ function findParagraphTarget(textRoot, media) {
 
   const paragraph = clampInt(media.isolde_after_paragraph, 1, blocks.length, blocks.length);
   return blocks[Math.max(0, paragraph - 1)] || blocks[blocks.length - 1];
+}
+
+
+function pendingScenesFor(message) {
+  return message && message.extra && Array.isArray(message.extra.isolde_pending_scenes)
+    ? message.extra.isolde_pending_scenes
+    : [];
+}
+
+async function addPendingScenes(messageId, scenes) {
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  if (!message) throw new Error('找不到触发绘图的聊天消息');
+  if (!message.extra || typeof message.extra !== 'object') message.extra = {};
+  if (!Array.isArray(message.extra.isolde_pending_scenes)) message.extra.isolde_pending_scenes = [];
+
+  const paragraphs = latestParagraphs(messageId);
+  const stamp = Date.now();
+  const added = [];
+
+  scenes.forEach((scene, index) => {
+    const afterParagraph = clampInt(scene.afterParagraph, 1, Math.max(1, paragraphs.length), paragraphs.length || 1);
+    const anchorText = String(paragraphs[afterParagraph - 1] || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const pending = {
+      id: 'isolde-pending-' + stamp + '-' + index + '-' + Math.random().toString(36).slice(2, 7),
+      prompt: String(scene.prompt || '').trim(),
+      afterParagraph,
+      anchorText,
+    };
+    if (pending.prompt) {
+      message.extra.isolde_pending_scenes.push(pending);
+      added.push(pending);
+    }
+  });
+
+  if (context.saveChat) await context.saveChat();
+  queueDecorate(messageId);
+  return added;
+}
+
+async function skipPendingScene(messageId, pendingId) {
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const pending = pendingScenesFor(message);
+  const index = pending.findIndex((item) => item && item.id === pendingId);
+  if (index < 0) return;
+
+  pending.splice(index, 1);
+  if (!pending.length && message && message.extra) delete message.extra.isolde_pending_scenes;
+  if (context.saveChat) await context.saveChat();
+  queueDecorate(messageId);
+}
+
+async function generatePendingScene(messageId, pendingId, ...buttons) {
+  if (running) {
+    toast('上一张还在生成。', 'warning');
+    return;
+  }
+
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const pending = pendingScenesFor(message);
+  const item = pending.find((scene) => scene && scene.id === pendingId);
+  if (!item) {
+    toast('这个生图点已经处理过了。', 'warning');
+    queueDecorate(messageId);
+    return;
+  }
+
+  running = true;
+  buttons.forEach((button) => { if (button) button.disabled = true; });
+  setState('generating', '正在生成这一个生图点…');
+
+  try {
+    const response = await bridgeRequest('generate', { scenes: [item.prompt] });
+    const result = response && Array.isArray(response.results) ? response.results[0] : null;
+    if (!result || !(result.blob instanceof Blob)) throw new Error('没有收到图片');
+
+    await attachResults([result], messageId, [{
+      prompt: item.prompt,
+      afterParagraph: item.afterParagraph,
+    }]);
+
+    const current = pendingScenesFor(message);
+    const currentIndex = current.findIndex((scene) => scene && scene.id === pendingId);
+    if (currentIndex >= 0) current.splice(currentIndex, 1);
+    if (!current.length && message && message.extra) delete message.extra.isolde_pending_scenes;
+    if (context.saveChat) await context.saveChat();
+    queueDecorate(messageId);
+
+    setState('success', '这一个生图点已生成');
+    setTimeout(() => setState('idle', '待机'), 1800);
+  } catch (error) {
+    console.error('[Isolde.nai] pending scene generation failed', error);
+    setState('error', (error && error.message) || '生成失败');
+    toast((error && error.message) || '生成失败，这个生图点会保留。', 'error');
+  } finally {
+    running = false;
+    buttons.forEach((button) => { if (button) button.disabled = false; });
+  }
+}
+
+function createPendingPlaceholder(messageId, item) {
+  const card = document.createElement('div');
+  card.className = 'isolde-generation-placeholder';
+  card.dataset.pendingId = item.id;
+  card.title = item.prompt || 'Isolde.nai 生图点';
+
+  const body = document.createElement('div');
+  body.className = 'isolde-placeholder-body';
+
+  const mark = document.createElement('span');
+  mark.className = 'isolde-placeholder-mark';
+  mark.textContent = '✦';
+
+  const text = document.createElement('div');
+  text.className = 'isolde-placeholder-text';
+  text.innerHTML = '<strong>这里可以出图</strong><span>点生成才会请求 NAI</span>';
+
+  const actions = document.createElement('div');
+  actions.className = 'isolde-placeholder-actions';
+
+  const generate = document.createElement('button');
+  generate.type = 'button';
+  generate.className = 'isolde-placeholder-generate';
+  generate.textContent = '生成';
+
+  const skip = document.createElement('button');
+  skip.type = 'button';
+  skip.textContent = '跳过';
+
+  generate.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void generatePendingScene(messageId, item.id, generate, skip);
+  });
+
+  skip.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void skipPendingScene(messageId, item.id);
+  });
+
+  actions.append(generate, skip);
+  body.append(mark, text);
+  card.append(body, actions);
+  return card;
+}
+
+function decoratePendingScenes(messageId, message, root, textRoot) {
+  root.querySelectorAll('.isolde-pending-slot').forEach((slot) => slot.remove());
+  const pending = pendingScenesFor(message);
+  if (!pending.length) return;
+
+  pending.forEach((item) => {
+    if (!item || !item.prompt) return;
+    const target = findParagraphTarget(textRoot, {
+      isolde_after_paragraph: item.afterParagraph,
+      isolde_anchor_text: item.anchorText,
+    });
+    const slot = document.createElement('div');
+    slot.className = 'isolde-pending-slot';
+    slot.dataset.pendingId = item.id;
+    slot.appendChild(createPendingPlaceholder(messageId, item));
+    if (target === textRoot) textRoot.appendChild(slot);
+    else target.insertAdjacentElement('afterend', slot);
+  });
 }
 
 function createMediaTools(messageId, mediaIndex, media) {
@@ -503,12 +673,17 @@ function createMediaTools(messageId, mediaIndex, media) {
 function decorateMessageMedia(messageId) {
   const context = getContext();
   const message = context && context.chat && context.chat[Number(messageId)];
-  if (!message || !message.extra || !Array.isArray(message.extra.media)) return;
+  if (!message || !message.extra) return;
 
   const root = document.querySelector('#chat .mes[mesid="' + messageId + '"]');
   const textRoot = root && root.querySelector('.mes_text');
-  const mediaWrapper = root && root.querySelector('.mes_media_wrapper');
-  if (!root || !textRoot || !mediaWrapper) return;
+  if (!root || !textRoot) return;
+
+  decoratePendingScenes(messageId, message, root, textRoot);
+
+  if (!Array.isArray(message.extra.media)) return;
+  const mediaWrapper = root.querySelector('.mes_media_wrapper');
+  if (!mediaWrapper) return;
 
   const fresh = Array.from(mediaWrapper.querySelectorAll('.mes_img_container[data-index]'))
     .filter((container) => {
@@ -799,13 +974,9 @@ async function runIllustration(messageId, force = false) {
       return;
     }
 
-    setState('generating', '正在生成 ' + plan.scenes.length + ' 张…');
-    const response = await bridgeRequest('generate', { scenes: plan.scenes.map((scene) => scene.prompt) });
-    const results = response && Array.isArray(response.results) ? response.results : [];
-    await attachResults(results, messageId, plan.scenes);
-
-    setState('success', '已生成 ' + results.length + ' 张');
-    toast('这一幕生成了 ' + results.length + ' 张图。');
+    const pending = await addPendingScenes(messageId, plan.scenes);
+    setState('success', '已标记 ' + pending.length + ' 个生图点');
+    toast('找到 ' + pending.length + ' 个生图点，点框里的「生成」才会请求 NAI。');
     setTimeout(() => setState('idle', '待机'), 2200);
   } catch (error) {
     console.error('[Isolde.nai]', error);
