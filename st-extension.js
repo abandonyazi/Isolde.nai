@@ -218,36 +218,50 @@ function conversationFor(messageId) {
     .slice(-18000);
 }
 
+function latestParagraphs(messageId) {
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const raw = String((message && message.mes) || '').trim();
+  const parts = raw.split(/\n\s*\n+/).map((part) => part.trim()).filter(Boolean);
+  return parts.length ? parts : [raw || ''];
+}
+
 function directorPrompt(messageId, force) {
   const s = settings();
   const conversation = conversationFor(messageId);
+  const paragraphs = latestParagraphs(messageId);
+  const numbered = paragraphs.map((paragraph, index) => 'P' + (index + 1) + ': ' + paragraph).join('\n\n');
   const triggerRule = force
     ? 'This trigger is mandatory. generate must be true.'
-    : 'Only set generate=true when the current moment has a visually distinct scene worth illustrating. Pure small talk, repeated cuddling, or a scene with no meaningful visual change may be skipped.';
+    : 'Only set generate=true when this reply contains at least one visually distinct moment worth illustrating. Pure small talk or a reply with no meaningful visual change may be skipped.';
   return [
-    'You are the visual director for an ongoing roleplay. Decide whether the latest moment should become a NovelAI illustration and, when drawing, write exactly ' + s.count + ' distinct English scene prompts.',
+    'You are the visual director for an ongoing roleplay. Read the latest reply as numbered paragraphs and choose where images belong inside that reply.',
     '',
     triggerRule,
     '',
-    'Return JSON only, with this exact structure:',
-    '{"generate":true,"reason":"short reason","scenes":["prompt 1","prompt 2"]}',
+    'When generate=true, return exactly ' + s.count + ' scene objects. If the reply contains several distinct visual moments, distribute the images across those moments. If fewer moments exist than the requested image count, use alternate shots of the strongest moments.',
     '',
-    'Rules for scenes:',
-    '- Exactly ' + s.count + ' scene strings when generate=true.',
-    '- Each scene depicts the same current narrative moment but uses a meaningfully different shot, framing, pose emphasis, or composition.',
+    'Return JSON only with this exact structure:',
+    '{"generate":true,"reason":"short reason","scenes":[{"prompt":"NovelAI scene tags","after_paragraph":1},{"prompt":"NovelAI scene tags","after_paragraph":3}]}',
+    '',
+    'Rules:',
+    '- after_paragraph is 1-based and must point to the paragraph whose scene the image depicts.',
+    '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
-    '- Focus on action, pose, expression, camera, environment, clothing that is explicitly present, lighting, atmosphere, and important props.',
+    '- Focus on action, pose, expression, camera, environment, explicit clothing, lighting, atmosphere, and important props.',
     '- Do not invent fixed character appearance such as hair color, eye color, body type, species traits, or facial features. Isolde.nai character anchors handle appearance.',
     '- Preserve explicit visual details from the conversation.',
-    '- Do not include explanations inside scene strings.',
     '- If generate=false, scenes must be [].',
     '',
-    'Recent conversation:',
+    'Latest reply paragraphs:',
+    numbered,
+    '',
+    'Earlier context for continuity:',
     conversation,
   ].join('\n');
 }
 
-function parseDirectorReply(raw, count, force) {
+function parseDirectorReply(raw, count, force, paragraphCount) {
   const tickFence = String.fromCharCode(96, 96, 96);
   let text = String(raw || '').trim();
   if (text.toLowerCase().startsWith(tickFence + 'json')) text = text.slice(7);
@@ -261,21 +275,29 @@ function parseDirectorReply(raw, count, force) {
     data = JSON.parse(match ? match[0] : text);
   } catch {
     if (!force) return { generate: false, reason: '导演判断无法解析', scenes: [] };
-    data = { generate: true, reason: 'manual', scenes: [text] };
+    data = { generate: true, reason: 'manual', scenes: [{ prompt: text, after_paragraph: paragraphCount }] };
   }
 
   const generate = force ? true : Boolean(data && data.generate);
-  let scenes = Array.isArray(data && data.scenes)
-    ? data.scenes.map((value) => String(value || '').trim()).filter(Boolean)
-    : [];
+  let scenes = Array.isArray(data && data.scenes) ? data.scenes : [];
+  scenes = scenes.map((scene) => {
+    if (typeof scene === 'string') {
+      return { prompt: scene.trim(), afterParagraph: paragraphCount };
+    }
+    const prompt = String((scene && (scene.prompt || scene.scene)) || '').trim();
+    const afterParagraph = clampInt(scene && (scene.after_paragraph ?? scene.afterParagraph), 1, Math.max(1, paragraphCount), paragraphCount);
+    return { prompt, afterParagraph };
+  }).filter((scene) => scene.prompt);
 
   if (generate && !scenes.length && data && typeof data.prompt === 'string') {
-    scenes = [data.prompt.trim()];
+    scenes = [{ prompt: data.prompt.trim(), afterParagraph: paragraphCount }];
   }
 
   if (generate && scenes.length) {
     const base = scenes[scenes.length - 1];
-    while (scenes.length < count) scenes.push(base + ', alternate camera angle, different composition');
+    while (scenes.length < count) {
+      scenes.push({ prompt: base.prompt + ', alternate camera angle, different composition', afterParagraph: base.afterParagraph });
+    }
     scenes = scenes.slice(0, count);
   }
 
@@ -285,7 +307,7 @@ function parseDirectorReply(raw, count, force) {
 async function planScenes(messageId, force) {
   setState('judging', force ? '正在整理这一幕…' : '正在判断这一幕…');
   const raw = await generateQuietPrompt({ quietPrompt: directorPrompt(messageId, force) });
-  return parseDirectorReply(raw, settings().count, force);
+  return parseDirectorReply(raw, settings().count, force, latestParagraphs(messageId).length);
 }
 
 function bridgeRequest(type, payload = {}, timeout = 600000) {
