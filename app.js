@@ -26,7 +26,7 @@ const els = {
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
-  apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), settingsStatus: $('settingsStatus'),
+  apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
   vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibePresetSelect: $('vibePresetSelect'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
@@ -831,6 +831,111 @@ async function listLocalAssets(prefix){
   db.close();
   return items.sort((a,b)=>(b.updatedAt||0)-(a.updatedAt||0));
 }
+async function getAllLocalAssets(){
+  const db=await openDb();
+  const items=await new Promise((resolve,reject)=>{
+    const tx=db.transaction('assets','readonly');
+    const req=tx.objectStore('assets').getAll();
+    req.onsuccess=()=>resolve(req.result||[]);
+    req.onerror=()=>reject(req.error);
+  });
+  db.close();
+  return items;
+}
+function blobAsDataUrl(blob){
+  return new Promise((resolve,reject)=>{
+    const reader=new FileReader();
+    reader.onload=()=>resolve(String(reader.result||''));
+    reader.onerror=()=>reject(reader.error||new Error('文件读取失败'));
+    reader.readAsDataURL(blob);
+  });
+}
+async function portableEncode(value){
+  if(value instanceof Blob){
+    return {__isoldeType:'blob',type:value.type||'',name:value.name||'',data:await blobAsDataUrl(value)};
+  }
+  if(Array.isArray(value))return await Promise.all(value.map(portableEncode));
+  if(value&&typeof value==='object'){
+    const out={};
+    for(const [key,item] of Object.entries(value))out[key]=await portableEncode(item);
+    return out;
+  }
+  return value;
+}
+function blobFromDataUrl(dataUrl,type='',name=''){
+  const match=String(dataUrl||'').match(/^data:([^;,]*)(;base64)?,(.*)$/s);
+  if(!match)throw new Error('配置中的图片数据损坏');
+  const mime=type||match[1]||'application/octet-stream';
+  const binary=match[2]?atob(match[3]):decodeURIComponent(match[3]);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  if(name&&typeof File!=='undefined')return new File([bytes],name,{type:mime});
+  return new Blob([bytes],{type:mime});
+}
+async function portableDecode(value){
+  if(Array.isArray(value))return await Promise.all(value.map(portableDecode));
+  if(value&&typeof value==='object'){
+    if(value.__isoldeType==='blob')return blobFromDataUrl(value.data,value.type,value.name);
+    const out={};
+    for(const [key,item] of Object.entries(value))out[key]=await portableDecode(item);
+    return out;
+  }
+  return value;
+}
+async function exportPortableConfig(){
+  try{
+    saveSettings();
+    const assets=await portableEncode(await getAllLocalAssets());
+    const bundle={
+      kind:'isolde-nai-config',
+      version:1,
+      exportedAt:new Date().toISOString(),
+      settings:loadJson(SETTINGS_KEY,{}),
+      presets:loadJson(PRESETS_KEY,[]),
+      anchors:loadJson(ANCHORS_KEY,[]),
+      theme:localStorage.getItem(THEME_KEY)||'',
+      assets
+    };
+    const blob=new Blob([JSON.stringify(bundle,null,2)],{type:'application/json'});
+    await saveBlob(blob,'isolde-nai-config-'+new Date().toISOString().slice(0,10)+'.json');
+    showToast('配置已导出');
+  }catch(e){
+    console.error(e);
+    showToast((e?.message||'配置导出失败').slice(0,180));
+  }
+}
+async function importPortableConfig(file){
+  if(!file)return;
+  try{
+    const raw=JSON.parse(await file.text());
+    if(raw?.kind!=='isolde-nai-config')throw new Error('这不是 Isolde.nai 配置文件');
+    if(raw.settings&&typeof raw.settings==='object')saveJson(SETTINGS_KEY,raw.settings);
+    if(Array.isArray(raw.presets))saveJson(PRESETS_KEY,raw.presets);
+    if(Array.isArray(raw.anchors))saveJson(ANCHORS_KEY,raw.anchors);
+    if(typeof raw.theme==='string'&&raw.theme)localStorage.setItem(THEME_KEY,raw.theme);
+    if(Array.isArray(raw.assets)){
+      const assets=await portableDecode(raw.assets);
+      const db=await openDb();
+      await new Promise((resolve,reject)=>{
+        const tx=db.transaction('assets','readwrite');
+        const store=tx.objectStore('assets');
+        store.clear();
+        for(const item of assets)if(item?.key)store.put(item);
+        tx.oncomplete=resolve;
+        tx.onerror=()=>reject(tx.error);
+      });
+      db.close();
+    }
+    showToast('配置已导入，正在刷新');
+    setTimeout(()=>location.reload(),500);
+  }catch(e){
+    console.error(e);
+    showToast((e?.message||'配置导入失败').slice(0,180));
+  }finally{
+    if(els.importConfigFile)els.importConfigFile.value='';
+  }
+}
+
 async function renderVibePresets(selectedKey=''){
   const items=await listLocalAssets('vibe-preset:');
   const previous=selectedKey||els.vibePresetSelect.value||'';
@@ -1599,6 +1704,9 @@ els.saveSettingsBtn.addEventListener('click',()=>{
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
 els.exportGalleryZipBtn?.addEventListener('click',exportGalleryZip);
+els.exportConfigBtn?.addEventListener('click',exportPortableConfig);
+els.importConfigBtn?.addEventListener('click',()=>els.importConfigFile?.click());
+els.importConfigFile?.addEventListener('change',()=>importPortableConfig(els.importConfigFile.files?.[0]));
 els.uploadWatermarkBtn?.addEventListener('click',()=>els.watermarkFile?.click());
 els.watermarkFile?.addEventListener('change',async()=>{
   const file=els.watermarkFile.files?.[0];
