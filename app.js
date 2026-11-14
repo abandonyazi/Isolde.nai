@@ -773,7 +773,7 @@ function buildNaiPayload(seed=null,promptOverride=null) {
     noise_schedule:'karras',legacy_v3_extend:false,skip_cfg_above_sigma:null,use_coords:false,
     normalize_reference_strength_multiple:true,inpaintImg2ImgStrength:1,
     legacy_uc:false,negative_prompt:negative,deliberate_euler_ancestral_bug:false,prefer_brownian:true,
-    image_format:'png',stream:'msgpack',
+    image_format:'png',
     v4_prompt:{caption:{base_caption:positive,char_captions:charCaptions},use_coords:false,use_order:true},
     v4_negative_prompt:{
       caption:{base_caption:negative,char_captions:charCaptions.map(()=>({char_caption:'',centers:[{x:0.5,y:0.5}]}))},
