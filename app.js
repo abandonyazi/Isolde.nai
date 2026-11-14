@@ -315,16 +315,62 @@ function applyQualityTags(prompt) {
   }
   return p ? `${p.replace(/[\s,]+$/,'')}, ${q}` : q;
 }
+function stripCharacterPlaceholders(text) {
+  return String(text || '')
+    .replace(/\[([^\[\]\r\n]{1,100})\]/g, (match, rawName) => anchors.some(a => a.name === rawName.trim()) ? '' : match)
+    .replace(/(?:,\s*){2,}/g, ', ')
+    .replace(/^[,\s]+|[,\s]+$/g, '');
+}
+function characterSubjectTag(prompt) {
+  return String(prompt || '').split(',').map(part => part.trim()).find(tag =>
+    /^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(tag)
+  ) || '';
+}
+function hasCharacterSubjectTag(prompt) {
+  return String(prompt || '').split(',').some(part =>
+    /^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(part.trim())
+  );
+}
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
   const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
-  const explicitPlaceholderNames = characterPlaceholderNames(cleanJoin([presetPrompt, els.scenePrompt.value]));
+  const promptWithScene = cleanJoin([presetPrompt, els.scenePrompt.value]);
+  const explicitPlaceholderNames = characterPlaceholderNames(promptWithScene);
+  const chosenAnchors = [];
+  const seenAnchors = new Set();
+  const addAnchor = (anchor) => {
+    if (!anchor || seenAnchors.has(anchor.id)) return;
+    seenAnchors.add(anchor.id);
+    chosenAnchors.push(anchor);
+  };
+  if (includeSelectedAnchors) {
+    selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).forEach(addAnchor);
+  }
+  explicitPlaceholderNames.forEach(name => addAnchor(anchors.find(a => a.name === name)));
+
+  // Keep the assembled preview exactly as before so copying/editing the workbench
+  // still shows a complete flat prompt. Only the NAI request is separated below.
   const anchorText = includeSelectedAnchors
     ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt)
     : [];
-  const positive = expandCharacterPlaceholders(cleanJoin([presetPrompt, ...anchorText, els.scenePrompt.value]));
+  const positive = applyQualityTags(expandCharacterPlaceholders(cleanJoin([presetPrompt, ...anchorText, els.scenePrompt.value])));
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
-  return { positive: applyQualityTags(positive), negative };
+
+  if (!supportsCharacterPrompts(els.model.value) || !chosenAnchors.length) {
+    return { positive, basePositive: positive, negative, characters: [] };
+  }
+
+  let basePrompt = stripCharacterPlaceholders(promptWithScene);
+  if (!hasCharacterSubjectTag(basePrompt)) {
+    const subjectTags = chosenAnchors.map(anchor => characterSubjectTag(anchor.prompt)).filter(Boolean);
+    basePrompt = cleanJoin([...subjectTags, basePrompt]);
+  }
+  return {
+    positive,
+    basePositive: applyQualityTags(basePrompt),
+    negative,
+    characters: chosenAnchors.map(anchor => ({ name: anchor.name, anchor: anchor.name, prompt: '' })),
+  };
 }
 function updateAssembly() {
   const p = assemblePrompts();
@@ -678,9 +724,15 @@ function ucPresetNoneIndex(model) {
 function normalizeCharacterCaption(value) {
   return String(value || '').split(',').map((part)=>{
     const tag=part.trim();
-    if (/^\d+\s*girls?$/i.test(tag)) return 'girl';
-    if (/^\d+\s*boys?$/i.test(tag)) return 'boy';
-    return tag;
+    const counted = tag.match(/^\d+\s*(girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i);
+    if (!counted) return tag;
+    const kind = counted[1].toLowerCase();
+    if (kind.startsWith('girl')) return 'girl';
+    if (kind.startsWith('boy')) return 'boy';
+    if (kind === 'women' || kind === 'woman') return 'woman';
+    if (kind === 'men' || kind === 'man') return 'man';
+    if (kind.startsWith('other')) return 'other';
+    return 'person';
   }).filter(Boolean).join(', ');
 }
 function supportsCharacterPrompts(model) {
@@ -701,7 +753,7 @@ function resolveAutomaticCharacters(value) {
 }
 function buildNaiPayload(seed=null,promptOverride=null) {
   const source=promptOverride&&typeof promptOverride==='object'?promptOverride:assemblePrompts();
-  const positive=String(source.positive||'');
+  const positive=String(source.basePositive ?? source.positive ?? '');
   const negative=String(source.negative||'');
   const model=els.model.value;
   const isV5=model.startsWith('nai-diffusion-5');
