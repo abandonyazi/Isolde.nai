@@ -79,35 +79,10 @@ function rehydrateConnectionFields() {
   }
 }
 const themeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
+let manualTheme = null;
+let lastSystemTheme = null;
 function systemTheme() {
-  return themeMedia?.matches ? 'dark' : 'light';
-}
-function readThemeOverride() {
-  const raw = localStorage.getItem(THEME_KEY);
-  if (!raw) return null;
-  try {
-    const saved = JSON.parse(raw);
-    if ((saved?.theme === 'dark' || saved?.theme === 'light') &&
-        (saved?.systemAtOverride === 'dark' || saved?.systemAtOverride === 'light')) return saved;
-  } catch {}
-  localStorage.removeItem(THEME_KEY);
-  return null;
-}
-function preferredTheme() {
-  const system = systemTheme();
-  const saved = readThemeOverride();
-  if (!saved) return system;
-  if (saved.systemAtOverride !== system) {
-    localStorage.removeItem(THEME_KEY);
-    return system;
-  }
-  return saved.theme;
-}
-function saveThemeOverride(theme) {
-  localStorage.setItem(THEME_KEY, JSON.stringify({
-    theme: theme === 'dark' ? 'dark' : 'light',
-    systemAtOverride: systemTheme()
-  }));
+  return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 function applyTheme(theme) {
   const next = theme === 'dark' ? 'dark' : 'light';
@@ -120,8 +95,15 @@ function applyTheme(theme) {
     els.themeToggle.title = '临时切换主题，系统下次切换后恢复跟随';
   }
 }
-function syncThemeWithSystem() {
-  applyTheme(preferredTheme());
+function syncThemeWithSystem(force = false) {
+  const currentSystemTheme = systemTheme();
+  if (force || lastSystemTheme === null || currentSystemTheme !== lastSystemTheme) {
+    manualTheme = null;
+    lastSystemTheme = currentSystemTheme;
+    applyTheme(currentSystemTheme);
+    return;
+  }
+  applyTheme(manualTheme || currentSystemTheme);
 }
 function showToast(message) {
   els.toast.textContent = message;
@@ -1861,21 +1843,27 @@ async function clearGallery(){
   const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();showToast('图库已清空');
 }
 
-syncThemeWithSystem();
+localStorage.removeItem(THEME_KEY);
+syncThemeWithSystem(true);
 els.themeToggle?.addEventListener('click',()=>{
-  const next=document.documentElement.dataset.theme==='dark'?'light':'dark';
-  saveThemeOverride(next);
-  applyTheme(next);
+  manualTheme=document.documentElement.dataset.theme==='dark'?'light':'dark';
+  applyTheme(manualTheme);
   showToast('已临时切换，系统下次切换时恢复跟随');
 });
 const handleSystemThemeChange=()=>{
-  localStorage.removeItem(THEME_KEY);
-  applyTheme(systemTheme());
+  manualTheme=null;
+  lastSystemTheme=systemTheme();
+  applyTheme(lastSystemTheme);
 };
 if (themeMedia?.addEventListener) themeMedia.addEventListener('change',handleSystemThemeChange);
 else if (themeMedia?.addListener) themeMedia.addListener(handleSystemThemeChange);
-window.addEventListener('pageshow',syncThemeWithSystem);
+window.addEventListener('pageshow',()=>syncThemeWithSystem());
+window.addEventListener('focus',()=>syncThemeWithSystem());
 document.addEventListener('visibilitychange',()=>{ if (!document.hidden) syncThemeWithSystem(); });
+setInterval(()=>{
+  const currentSystemTheme=systemTheme();
+  if(currentSystemTheme!==lastSystemTheme) handleSystemThemeChange();
+},1500);
 els.tabs.forEach(b=>b.addEventListener('click',()=>goView(b.dataset.view)));
 els.presetSelect.addEventListener('change',()=>{settings.presetId=els.presetSelect.value;updateAssembly();});
 els.scenePrompt.addEventListener('input',updateAssembly);
