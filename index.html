@@ -7,8 +7,25 @@
   <script>
     (() => {
       try {
-        const theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        localStorage.removeItem('isolde_nai_theme_v1');
+        const key = 'isolde_nai_theme_v1';
+        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        let saved = null;
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const parsed = JSON.parse(raw);
+            if ((parsed?.theme === 'dark' || parsed?.theme === 'light') &&
+                (parsed?.systemAtOverride === 'dark' || parsed?.systemAtOverride === 'light')) {
+              saved = parsed;
+            }
+          } catch {
+            if (raw === 'dark' || raw === 'light') {
+              saved = { theme: raw, systemAtOverride: systemTheme };
+              localStorage.setItem(key, JSON.stringify(saved));
+            }
+          }
+        }
+        const theme = saved?.theme || systemTheme;
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.getElementById('themeColorMeta')?.setAttribute('content', theme === 'dark' ? '#111a23' : '#f3f7fb');
@@ -523,6 +540,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=44"></script>
+  <script type="module" src="./app.js?v=45"></script>
 </body>
 </html>
