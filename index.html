@@ -7,22 +7,8 @@
   <script>
     (() => {
       try {
-        const key = 'isolde_nai_theme_v1';
-        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-        let theme = systemTheme;
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          try {
-            const saved = JSON.parse(raw);
-            if ((saved?.theme === 'dark' || saved?.theme === 'light') && saved?.systemAtOverride === systemTheme) {
-              theme = saved.theme;
-            } else {
-              localStorage.removeItem(key);
-            }
-          } catch {
-            localStorage.removeItem(key);
-          }
-        }
+        const theme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        localStorage.removeItem('isolde_nai_theme_v1');
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.getElementById('themeColorMeta')?.setAttribute('content', theme === 'dark' ? '#111a23' : '#f3f7fb');
@@ -537,6 +523,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=43"></script>
+  <script type="module" src="./app.js?v=44"></script>
 </body>
 </html>
