@@ -6,7 +6,7 @@
   "js": "st-extension.js",
   "css": "st-extension.css",
   "author": "abandonyazi",
-  "version": "0.9.4",
+  "version": "0.9.5",
   "homePage": "https://github.com/abandonyazi/Isolde.nai",
   "auto_update": true,
   "description": "Isolde.nai for SillyTavern: multi-source scene understanding, native NAI character prompts, Chatu8 preset migration, opt-in inline generation, and the full NAI workbench."
