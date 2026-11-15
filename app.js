@@ -1874,14 +1874,28 @@ async function exportGalleryZip(){
   let exportId = '';
   try{
     if(!('serviceWorker' in navigator)) throw new Error('当前浏览器不支持大图库 ZIP 导出');
-    await navigator.serviceWorker.ready;
-    if(!navigator.serviceWorker.controller){
+    const pingZipWorker=()=>new Promise((resolve)=>{
+      const worker=navigator.serviceWorker.controller;
+      if(!worker){ resolve(false); return; }
+      const channel=new MessageChannel();
+      const timer=setTimeout(()=>resolve(false),800);
+      channel.port1.onmessage=(event)=>{
+        clearTimeout(timer);
+        resolve(Boolean(event.data?.ok&&event.data?.feature==='isolde-zip-stream-v1'));
+      };
+      worker.postMessage({type:'ISOLDE_ZIP_PING'},[channel.port2]);
+    });
+    let workerOk=await pingZipWorker();
+    if(!workerOk){
+      const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+      await reg.update().catch(()=>{});
       await new Promise((resolve)=>{
-        const timer=setTimeout(resolve,2500);
+        const timer=setTimeout(resolve,3000);
         navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve();},{once:true});
       });
+      workerOk=await pingZipWorker();
     }
-    if(!navigator.serviceWorker.controller) throw new Error('下载服务刚更新，请重新打开网页后再试');
+    if(!workerOk) throw new Error('下载服务正在更新，请重新打开网页后再试');
 
     db = await openDb();
     const keys = await new Promise((resolve,reject)=>{
@@ -2381,4 +2395,4 @@ document.addEventListener('visibilitychange',()=>{
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
 renderVibePresets().catch(e=>console.warn('Vibe 预设读取失败',e));
-if('serviceWorker' in navigator && !new URLSearchParams(location.search).has('embed')) navigator.serviceWorker.register('./sw.js').catch(()=>{});
+if('serviceWorker' in navigator && !new URLSearchParams(location.search).has('embed')) navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update().catch(()=>{})).catch(()=>{});
