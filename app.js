@@ -50,7 +50,51 @@ let referencePreviewUrl = null;
 let vibePreviewUrl = null;
 let naiInspectPreviewUrl = null;
 let currentNaiInspect = null;
+let zipWorkerReady = false;
+let zipWorkerInitPromise = null;
 
+
+function pingZipWorker(){
+  return new Promise((resolve)=>{
+    const worker=navigator.serviceWorker?.controller;
+    if(!worker){ resolve(false); return; }
+    const channel=new MessageChannel();
+    const timer=setTimeout(()=>resolve(false),900);
+    channel.port1.onmessage=(event)=>{
+      clearTimeout(timer);
+      resolve(Boolean(event.data?.ok&&event.data?.feature==='isolde-zip-stream-v2'));
+    };
+    try{
+      worker.postMessage({type:'ISOLDE_ZIP_PING'},[channel.port2]);
+    }catch{
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
+async function initZipWorker(){
+  if(zipWorkerInitPromise) return zipWorkerInitPromise;
+  zipWorkerInitPromise=(async()=>{
+    if(!('serviceWorker' in navigator)||new URLSearchParams(location.search).has('embed')) return false;
+    const btn=els.exportGalleryZipBtn;
+    if(btn) btn.disabled=true;
+    try{
+      const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
+      await reg.update().catch(()=>{});
+      for(let i=0;i<24;i++){
+        if(await pingZipWorker()){
+          zipWorkerReady=true;
+          return true;
+        }
+        await new Promise(r=>setTimeout(r,150));
+      }
+      return false;
+    }finally{
+      if(btn) btn.disabled=false;
+    }
+  })();
+  return zipWorkerInitPromise;
+}
 function uid(prefix='id') {
   if (crypto?.randomUUID) return `${prefix}-${crypto.randomUUID()}`;
   return `${prefix}-${Date.now()}-${Math.random().toString(16).slice(2)}`;
@@ -1866,125 +1910,146 @@ async function renderGallery(){
 
 async function exportGalleryZip(){
   const btn = els.exportGalleryZipBtn;
-  if (!btn) return;
-  const originalLabel = btn.textContent;
-  btn.disabled = true;
-  btn.textContent = '正在打包…';
-  let db = null;
-  let exportId = '';
+  if(!btn) return;
+  if(!zipWorkerReady){
+    showToast('下载服务还在准备，请重新打开网页后再试');
+    initZipWorker().catch(()=>{});
+    return;
+  }
+
+  const pad=(n)=>String(n).padStart(2,'0');
+  const now=new Date();
+  const day=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+  const filename=`isolde-nai-gallery-${day}.zip`;
+  const exportId=uid('zip');
+  const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}`,location.href);
+  downloadUrl.searchParams.set('name',filename);
+  downloadUrl.searchParams.set('started',String(Date.now()));
+
+  // Must happen before the first await so iOS Safari still sees a real user gesture.
+  const link=document.createElement('a');
+  link.href=downloadUrl.href;
+  link.download=filename;
+  link.style.display='none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+
+  const originalLabel=btn.textContent;
+  btn.disabled=true;
+  btn.textContent='正在打包…';
+  let db=null;
+  let jobStarted=false;
+
   try{
-    if(!('serviceWorker' in navigator)) throw new Error('当前浏览器不支持大图库 ZIP 导出');
-    const pingZipWorker=()=>new Promise((resolve)=>{
-      const worker=navigator.serviceWorker.controller;
-      if(!worker){ resolve(false); return; }
-      const channel=new MessageChannel();
-      const timer=setTimeout(()=>resolve(false),800);
-      channel.port1.onmessage=(event)=>{
-        clearTimeout(timer);
-        resolve(Boolean(event.data?.ok&&event.data?.feature==='isolde-zip-stream-v1'));
-      };
-      worker.postMessage({type:'ISOLDE_ZIP_PING'},[channel.port2]);
-    });
-    let workerOk=await pingZipWorker();
-    if(!workerOk){
-      const reg=await navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'});
-      await reg.update().catch(()=>{});
-      await new Promise((resolve)=>{
-        const timer=setTimeout(resolve,3000);
-        navigator.serviceWorker.addEventListener('controllerchange',()=>{clearTimeout(timer);resolve();},{once:true});
-      });
-      workerOk=await pingZipWorker();
-    }
-    if(!workerOk) throw new Error('下载服务正在更新，请重新打开网页后再试');
+    db=await openDb();
 
-    db = await openDb();
-    const keys = await new Promise((resolve,reject)=>{
-      const tx = db.transaction('history','readonly');
-      const req = tx.objectStore('history').getAllKeys();
-      req.onsuccess = ()=>resolve(req.result || []);
-      req.onerror = ()=>reject(req.error);
-    });
-    if(!keys.length){ showToast('图库还是空的'); return; }
-    keys.sort((a,b)=>Number(b)-Number(a));
-
-    await new Promise((resolve,reject)=>{
+    const writeJob=(patch)=>new Promise((resolve,reject)=>{
       const tx=db.transaction('exportChunks','readwrite');
-      tx.objectStore('exportChunks').clear();
+      tx.objectStore('exportChunks').put({
+        key:`${exportId}:job`,
+        exportId,
+        kind:'job',
+        filename,
+        createdAt:Date.now(),
+        ...patch
+      });
       tx.oncomplete=resolve;
       tx.onerror=()=>reject(tx.error);
-      tx.onabort=()=>reject(tx.error||new Error('临时打包区清理失败'));
+      tx.onabort=()=>reject(tx.error||new Error('ZIP 状态写入失败'));
     });
 
-    const { Zip, ZipPassThrough, strToU8 } = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
-    const readRecord = (key)=>new Promise((resolve,reject)=>{
-      const tx = db.transaction('history','readonly');
-      const req = tx.objectStore('history').get(key);
-      req.onsuccess = ()=>resolve(req.result || null);
-      req.onerror = ()=>reject(req.error);
+    await writeJob({status:'building',chunkCount:0,totalBytes:0});
+    jobStarted=true;
+
+    const keys=await new Promise((resolve,reject)=>{
+      const tx=db.transaction('history','readonly');
+      const req=tx.objectStore('history').getAllKeys();
+      req.onsuccess=()=>resolve(req.result||[]);
+      req.onerror=()=>reject(req.error);
+    });
+    if(!keys.length){
+      await writeJob({status:'error',message:'图库还是空的'});
+      showToast('图库还是空的');
+      return;
+    }
+    keys.sort((a,b)=>Number(b)-Number(a));
+
+    const {Zip,ZipPassThrough,strToU8}=await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
+    const readRecord=(key)=>new Promise((resolve,reject)=>{
+      const tx=db.transaction('history','readonly');
+      const req=tx.objectStore('history').get(key);
+      req.onsuccess=()=>resolve(req.result||null);
+      req.onerror=()=>reject(req.error);
     });
 
-    exportId = uid('zip');
-    let chunkIndex = 0;
-    let totalBytes = 0;
-    let writeChain = Promise.resolve();
-    const storeZipChunk = (data)=>{
+    let chunkIndex=0;
+    let totalBytes=0;
+    let writeChain=Promise.resolve();
+    const storeZipChunk=(data)=>{
       if(!data?.length) return;
-      const index = chunkIndex++;
-      totalBytes += data.length;
-      const blob = new Blob([data],{type:'application/octet-stream'});
-      writeChain = writeChain.then(()=>new Promise((resolve,reject)=>{
+      const index=chunkIndex++;
+      totalBytes+=data.length;
+      const blob=new Blob([data],{type:'application/octet-stream'});
+      writeChain=writeChain.then(()=>new Promise((resolve,reject)=>{
         const tx=db.transaction('exportChunks','readwrite');
-        tx.objectStore('exportChunks').put({key:`${exportId}:${index}`,exportId,index,blob});
+        tx.objectStore('exportChunks').put({
+          key:`${exportId}:${index}`,
+          exportId,
+          kind:'chunk',
+          index,
+          createdAt:Date.now(),
+          blob
+        });
         tx.oncomplete=resolve;
         tx.onerror=()=>reject(tx.error);
         tx.onabort=()=>reject(tx.error||new Error('ZIP 临时块写入失败'));
       }));
     };
 
-    let zipSettled = false;
+    let zipSettled=false;
     let resolveZip;
     let rejectZip;
-    const zipDone = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
-    const zip = new Zip((err,data,final)=>{
+    const zipDone=new Promise((resolve,reject)=>{resolveZip=resolve;rejectZip=reject;});
+    const zip=new Zip((err,data,final)=>{
       if(zipSettled) return;
       if(err){
-        zipSettled = true;
+        zipSettled=true;
         rejectZip(err);
         return;
       }
       storeZipChunk(data);
       if(final){
-        zipSettled = true;
+        zipSettled=true;
         writeChain.then(resolveZip,rejectZip);
       }
     });
 
-    const used = new Map();
-    const metadata = [];
-    const pad = (n) => String(n).padStart(2,'0');
-    const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
-    let packed = 0;
+    const used=new Map();
+    const metadata=[];
+    const safe=(value)=>String(value||'').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
+    let packed=0;
 
     for(let i=0;i<keys.length;i++){
-      const item = await readRecord(keys[i]);
+      const item=await readRecord(keys[i]);
       if(!item?.blob) continue;
 
-      const d = new Date(item.createdAt || Date.now());
-      const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
-      const seed = safe(item.seed || 'noseed');
-      const preset = safe(item.presetName || 'nai');
-      const base = `${stamp}_${preset}_seed-${seed}`;
-      const count = used.get(base) || 0;
-      used.set(base, count + 1);
-      const name = `${base}${count ? `_${count+1}` : ''}.png`;
+      const d=new Date(item.createdAt||Date.now());
+      const stamp=`${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
+      const seed=safe(item.seed||'noseed');
+      const preset=safe(item.presetName||'nai');
+      const base=`${stamp}_${preset}_seed-${seed}`;
+      const duplicateCount=used.get(base)||0;
+      used.set(base,duplicateCount+1);
+      const name=`${base}${duplicateCount?`_${duplicateCount+1}`:''}.png`;
 
-      const entry = new ZipPassThrough(name);
+      const entry=new ZipPassThrough(name);
       zip.add(entry);
-      if(typeof item.blob.stream === 'function'){
-        const reader = item.blob.stream().getReader();
+      if(typeof item.blob.stream==='function'){
+        const reader=item.blob.stream().getReader();
         try{
           while(true){
-            const part = await reader.read();
+            const part=await reader.read();
             if(part.done) break;
             if(part.value?.length){
               entry.push(part.value,false);
@@ -2002,68 +2067,67 @@ async function exportGalleryZip(){
       }
 
       metadata.push({
-        file: name,
-        createdAt: item.createdAt || null,
-        seed: item.seed || '',
-        presetName: item.presetName || '',
-        model: item.model || '',
-        sampler: item.sampler || '',
-        width: item.width || null,
-        height: item.height || null,
-        steps: item.steps || null,
-        cfg: item.cfg ?? null,
-        referenceEnabled: Boolean(item.referenceEnabled),
-        referenceMode: item.referenceMode || '',
-        referenceStrength: item.referenceStrength ?? null,
-        referenceFidelity: item.referenceFidelity ?? null,
-        referenceName: item.referenceName || '',
-        vibeEnabled: Boolean(item.vibeEnabled),
-        vibeStrength: item.vibeStrength ?? null,
-        vibeInformation: item.vibeInformation ?? null,
-        vibeName: item.vibeName || '',
-        prompt: item.assembledPrompt || item.scenePrompt || item.prompt || '',
-        negative: item.assembledNegative || item.extraNegative || item.negative || ''
+        file:name,
+        createdAt:item.createdAt||null,
+        seed:item.seed||'',
+        presetName:item.presetName||'',
+        model:item.model||'',
+        sampler:item.sampler||'',
+        width:item.width||null,
+        height:item.height||null,
+        steps:item.steps||null,
+        cfg:item.cfg??null,
+        referenceEnabled:Boolean(item.referenceEnabled),
+        referenceMode:item.referenceMode||'',
+        referenceStrength:item.referenceStrength??null,
+        referenceFidelity:item.referenceFidelity??null,
+        referenceName:item.referenceName||'',
+        vibeEnabled:Boolean(item.vibeEnabled),
+        vibeStrength:item.vibeStrength??null,
+        vibeInformation:item.vibeInformation??null,
+        vibeName:item.vibeName||'',
+        prompt:item.assembledPrompt||item.scenePrompt||item.prompt||'',
+        negative:item.assembledNegative||item.extraNegative||item.negative||''
       });
 
       packed++;
-      btn.textContent = `正在打包 ${i+1}/${keys.length}`;
-      if(i % 3 === 0) await new Promise(r => setTimeout(r,0));
+      btn.textContent=`正在打包 ${i+1}/${keys.length}`;
+      if(i%3===0) await new Promise(r=>setTimeout(r,0));
     }
 
-    const metaEntry = new ZipPassThrough('metadata.json');
+    const metaEntry=new ZipPassThrough('metadata.json');
     zip.add(metaEntry);
     metaEntry.push(strToU8(JSON.stringify(metadata,null,2)),true);
     zip.end();
     await zipDone;
+    await writeJob({status:'done',chunkCount:chunkIndex,totalBytes,packed,finishedAt:Date.now()});
 
     db.close();
-    db = null;
-
-    const now = new Date();
-    const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-    const filename = `isolde-nai-gallery-${day}.zip`;
-    const downloadUrl = new URL(`./__isolde_export__/${encodeURIComponent(exportId)}`,location.href);
-    downloadUrl.searchParams.set('chunks',String(chunkIndex));
-    downloadUrl.searchParams.set('size',String(totalBytes));
-    downloadUrl.searchParams.set('name',filename);
-
-    btn.textContent = '正在保存…';
-    const a=document.createElement('a');
-    a.href=downloadUrl.href;
-    a.download=filename;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-
-    showToast(`已打包 ${packed} 张图片`);
-    exportId = '';
+    db=null;
+    jobStarted=false;
+    showToast(`已打包 ${packed} 张图片，下载已开始`);
   }catch(e){
     console.error(e);
-    if(e?.name !== 'AbortError') showToast((e?.message || String(e)).slice(0,180));
+    if(db&&jobStarted){
+      try{
+        const tx=db.transaction('exportChunks','readwrite');
+        tx.objectStore('exportChunks').put({
+          key:`${exportId}:job`,
+          exportId,
+          kind:'job',
+          filename,
+          status:'error',
+          message:e?.message||String(e),
+          createdAt:Date.now(),
+          finishedAt:Date.now()
+        });
+      }catch{}
+    }
+    showToast((e?.message||String(e)).slice(0,180));
   }finally{
     if(db) db.close();
-    btn.disabled = false;
-    btn.textContent = originalLabel;
+    btn.disabled=false;
+    btn.textContent=originalLabel;
   }
 }
 
@@ -2395,4 +2459,4 @@ document.addEventListener('visibilitychange',()=>{
 refreshWatermarkUi().catch(e=>console.warn('水印读取失败',e));
 refreshReferenceUi().then(()=>saveSettings()).catch(e=>console.warn('Reference / Vibe 读取失败',e));
 renderVibePresets().catch(e=>console.warn('Vibe 预设读取失败',e));
-if('serviceWorker' in navigator && !new URLSearchParams(location.search).has('embed')) navigator.serviceWorker.register('./sw.js',{updateViaCache:'none'}).then(reg=>reg.update().catch(()=>{})).catch(()=>{});
+initZipWorker().catch(e=>console.warn('ZIP 下载服务初始化失败',e));
