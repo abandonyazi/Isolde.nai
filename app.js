@@ -454,6 +454,11 @@ function stripCharacterSubjectTags(prompt) {
     !/^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(tag)
   ).join(', ');
 }
+function characterSubjectTags(prompt) {
+  return String(prompt || '').split(',').map(part => part.trim()).filter(tag =>
+    /^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(tag)
+  );
+}
 function subjectTagsFromAnchors(items) {
   return items.map(anchor => characterSubjectTag(anchor?.prompt || '')).filter(Boolean);
 }
@@ -496,10 +501,12 @@ function assemblePrompts(includeSelectedAnchors = true) {
   // NAI-recommended broad order:
   // subject count/type -> character appearance -> style/artist/quality -> scene -> TEXT.
   // Preserve each saved anchor's internal appearance order rather than guessing tag semantics.
-  const subjectTags = subjectTagsFromAnchors(orderedAnchors);
+  const presetSubjectTags = characterSubjectTags(presetPrompt);
+  const subjectTags = presetSubjectTags.length ? presetSubjectTags : subjectTagsFromAnchors(orderedAnchors);
   const appearanceParts = orderedAnchorAppearance(orderedAnchors);
   const presetWithoutPlaceholders = stripCharacterPlaceholders(presetPrompt);
-  const styledPreset = applyQualityTags(presetWithoutPlaceholders);
+  const presetWithoutSubjects = stripCharacterSubjectTags(presetWithoutPlaceholders);
+  const styledPreset = applyQualityTags(presetWithoutSubjects);
   const sceneVisualWithoutPlaceholders = stripCharacterPlaceholders(scene.visual);
 
   const positiveVisual = cleanJoin([
@@ -520,10 +527,9 @@ function assemblePrompts(includeSelectedAnchors = true) {
 
   // Character-capable models keep full appearance in char_captions.
   // The base prompt keeps only the subject count/type, then style, then scene.
-  const baseSubjectTags = subjectTagsFromAnchors(chosenAnchors);
-  const presetHasSubject = hasCharacterSubjectTag(presetPrompt);
+  const baseSubjectTags = presetSubjectTags.length ? presetSubjectTags : subjectTagsFromAnchors(chosenAnchors);
   const baseVisual = cleanJoin([
-    ...(presetHasSubject ? [] : baseSubjectTags),
+    ...baseSubjectTags,
     styledPreset,
     sceneVisualWithoutPlaceholders
   ]);
