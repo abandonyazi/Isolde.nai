@@ -453,7 +453,19 @@
           <div class="settings-fold-body export-box">
             <div><p class="settings-fold-note">把这台设备里保存的全部原图一次性打包成 ZIP。</p></div>
           
-          <button id="exportGalleryZipBtn" class="secondary-btn" type="button">导出图库 ZIP</button>
+          <div class="gallery-export-controls">
+            <div class="gallery-export-actions">
+              <button id="exportGalleryZipBtn" class="secondary-btn" type="button">开始打包</button>
+              <button id="downloadGalleryZipBtn" class="primary-btn" type="button" disabled>下载 ZIP</button>
+            </div>
+            <div id="galleryExportProgressWrap" class="gallery-export-progress" aria-live="polite">
+              <div class="gallery-export-progress-head">
+                <span id="galleryExportProgressText">等待打包</span>
+                <strong id="galleryExportProgressPercent">0%</strong>
+              </div>
+              <progress id="galleryExportProgressBar" max="100" value="0"></progress>
+            </div>
+          </div>
         
           </div>
         </details>
