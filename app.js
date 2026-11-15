@@ -26,6 +26,7 @@ const els = {
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
+  galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
@@ -52,6 +53,8 @@ let naiInspectPreviewUrl = null;
 let currentNaiInspect = null;
 let zipWorkerReady = false;
 let zipWorkerInitPromise = null;
+let preparedGalleryZip = null;
+
 
 
 function pingZipWorker(){
@@ -2011,8 +2014,32 @@ async function streamStoredZipEntry({name,blob,createdAt,onChunk,offset}){
   };
 }
 
+function setGalleryExportProgress(value,text){
+  const pct=Math.max(0,Math.min(100,Math.round(Number(value)||0)));
+  if(els.galleryExportProgressBar) els.galleryExportProgressBar.value=pct;
+  if(els.galleryExportProgressPercent) els.galleryExportProgressPercent.textContent=`${pct}%`;
+  if(els.galleryExportProgressText) els.galleryExportProgressText.textContent=text||'';
+}
+function resetPreparedGalleryZip(){
+  preparedGalleryZip=null;
+  if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=true;
+}
+async function clearGalleryExportChunks(){
+  const db=await openDb();
+  try{
+    await new Promise((resolve,reject)=>{
+      const tx=db.transaction('exportChunks','readwrite');
+      tx.objectStore('exportChunks').clear();
+      tx.oncomplete=resolve;
+      tx.onerror=()=>reject(tx.error);
+      tx.onabort=()=>reject(tx.error||new Error('临时 ZIP 清理失败'));
+    });
+  }finally{
+    db.close();
+  }
+}
 async function exportGalleryZip(){
-  const btn = els.exportGalleryZipBtn;
+  const btn=els.exportGalleryZipBtn;
   if(!btn) return;
   if(!zipWorkerReady){
     showToast('下载服务还在准备，请重新打开网页后再试');
@@ -2020,32 +2047,38 @@ async function exportGalleryZip(){
     return;
   }
 
-  const pad=(n)=>String(n).padStart(2,'0');
-  const now=new Date();
-  const day=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-  const filename=`isolde-nai-gallery-${day}.zip`;
-  const exportId=uid('zip');
-  const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}`,location.href);
-  downloadUrl.searchParams.set('name',filename);
-  downloadUrl.searchParams.set('started',String(Date.now()));
-
-  // Must happen before the first await so iOS Safari still sees a real user gesture.
-  const link=document.createElement('a');
-  link.href=downloadUrl.href;
-  link.download=filename;
-  link.style.display='none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  resetPreparedGalleryZip();
+  setGalleryExportProgress(0,'正在准备图库…');
 
   const originalLabel=btn.textContent;
   btn.disabled=true;
   btn.textContent='正在打包…';
   let db=null;
   let jobStarted=false;
+  let exportId='';
 
   try{
+    await clearGalleryExportChunks();
     db=await openDb();
+
+    const keys=await new Promise((resolve,reject)=>{
+      const tx=db.transaction('history','readonly');
+      const req=tx.objectStore('history').getAllKeys();
+      req.onsuccess=()=>resolve(req.result||[]);
+      req.onerror=()=>reject(req.error);
+    });
+    if(!keys.length){
+      setGalleryExportProgress(0,'图库还是空的');
+      showToast('图库还是空的');
+      return;
+    }
+    keys.sort((a,b)=>Number(b)-Number(a));
+
+    const pad=(n)=>String(n).padStart(2,'0');
+    const now=new Date();
+    const day=`${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    const filename=`isolde-nai-gallery-${day}.zip`;
+    exportId=uid('zip');
 
     const writeJob=(patch)=>new Promise((resolve,reject)=>{
       const tx=db.transaction('exportChunks','readwrite');
@@ -2064,19 +2097,6 @@ async function exportGalleryZip(){
 
     await writeJob({status:'building',chunkCount:0,totalBytes:0});
     jobStarted=true;
-
-    const keys=await new Promise((resolve,reject)=>{
-      const tx=db.transaction('history','readonly');
-      const req=tx.objectStore('history').getAllKeys();
-      req.onsuccess=()=>resolve(req.result||[]);
-      req.onerror=()=>reject(req.error);
-    });
-    if(!keys.length){
-      await writeJob({status:'error',message:'图库还是空的'});
-      showToast('图库还是空的');
-      return;
-    }
-    keys.sort((a,b)=>Number(b)-Number(a));
 
     const readRecord=(key)=>new Promise((resolve,reject)=>{
       const tx=db.transaction('history','readonly');
@@ -2112,7 +2132,6 @@ async function exportGalleryZip(){
 
     const centralEntries=[];
     let zipOffset=0;
-
     const used=new Map();
     const metadata=[];
     const safe=(value)=>String(value||'').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
@@ -2166,10 +2185,12 @@ async function exportGalleryZip(){
       });
 
       packed++;
-      btn.textContent=`正在打包 ${i+1}/${keys.length}`;
+      const pct=Math.min(98,Math.round(((i+1)/keys.length)*98));
+      setGalleryExportProgress(pct,`正在打包 ${i+1} / ${keys.length}`);
       if(i%3===0) await new Promise(r=>setTimeout(r,0));
     }
 
+    setGalleryExportProgress(99,'正在整理 ZIP…');
     const metaBytes=new TextEncoder().encode(JSON.stringify(metadata,null,2));
     const metaEntry=await streamStoredZipEntry({
       name:'metadata.json',
@@ -2190,26 +2211,31 @@ async function exportGalleryZip(){
       await storeZipChunk(header);
     }
     const eocd=zipEndOfCentralDirectory(centralEntries.length,centralSize,centralOffset);
-    zipOffset+=eocd.length;
     await storeZipChunk(eocd);
     await writeChain;
 
     await writeJob({status:'done',chunkCount:chunkIndex,totalBytes,packed,finishedAt:Date.now()});
 
-    db.close();
-    db=null;
+    const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}`,location.href);
+    downloadUrl.searchParams.set('name',filename);
+    downloadUrl.searchParams.set('started',String(Date.now()));
+    preparedGalleryZip={href:downloadUrl.href,filename,packed};
+
+    if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=false;
+    setGalleryExportProgress(100,`打包完成 · ${packed} 张图片`);
+    showToast('图库 ZIP 已准备好');
     jobStarted=false;
-    showToast(`已打包 ${packed} 张图片，下载已开始`);
   }catch(e){
     console.error(e);
-    if(db&&jobStarted){
+    resetPreparedGalleryZip();
+    setGalleryExportProgress(0,'打包失败');
+    if(db&&jobStarted&&exportId){
       try{
         const tx=db.transaction('exportChunks','readwrite');
         tx.objectStore('exportChunks').put({
           key:`${exportId}:job`,
           exportId,
           kind:'job',
-          filename,
           status:'error',
           message:e?.message||String(e),
           createdAt:Date.now(),
@@ -2223,6 +2249,22 @@ async function exportGalleryZip(){
     btn.disabled=false;
     btn.textContent=originalLabel;
   }
+}
+function downloadPreparedGalleryZip(){
+  if(!preparedGalleryZip){
+    showToast('先完成图库打包');
+    return;
+  }
+  const link=document.createElement('a');
+  link.href=preparedGalleryZip.href;
+  link.download=preparedGalleryZip.filename;
+  link.style.display='none';
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=true;
+  setGalleryExportProgress(100,'下载已开始');
+  preparedGalleryZip=null;
 }
 
 async function clearGallery(){
@@ -2356,6 +2398,7 @@ els.saveSettingsBtn.addEventListener('click',()=>{
 });
 els.clearGalleryBtn.addEventListener('click',clearGallery);
 els.exportGalleryZipBtn?.addEventListener('click',exportGalleryZip);
+els.downloadGalleryZipBtn?.addEventListener('click',downloadPreparedGalleryZip);
 els.exportConfigBtn?.addEventListener('click',exportPortableConfig);
 els.importConfigBtn?.addEventListener('click',()=>els.importConfigFile?.click());
 els.importConfigFile?.addEventListener('change',()=>importPortableConfig(els.importConfigFile.files?.[0]));
