@@ -1,5 +1,5 @@
-const CACHE = 'isolde-nai-v63';
-const SHELL = ['./', './index.html', './app.css?v=33', './app.js?v=58', './manifest.webmanifest', './icon.svg?v=16'];
+const CACHE = 'isolde-nai-v64';
+const SHELL = ['./', './index.html', './app.css?v=33', './app.js?v=59', './manifest.webmanifest', './icon.svg?v=16'];
 const DB_NAME = 'isolde-nai-gallery';
 const DB_VERSION = 4;
 
@@ -57,7 +57,7 @@ function clearExportRecords(db,exportId){
 const sleep=(ms)=>new Promise(r=>setTimeout(r,ms));
 
 async function exportResponse(url){
-  const match=url.pathname.match(/\/__isolde_export__\/([^/]+)$/);
+  const match=url.pathname.match(/\/__isolde_export__\/([^/]+)(?:\/[^/]+)?$/);
   if(!match) return null;
 
   const exportId=decodeURIComponent(match[1]);
@@ -121,7 +121,7 @@ async function exportResponse(url){
   });
 
   const headers=new Headers({
-    'Content-Type':'application/zip',
+    'Content-Type':'application/octet-stream',
     'Content-Disposition':`attachment; filename="${filename}"; filename*=UTF-8''${encodeURIComponent(filename)}`,
     'Cache-Control':'no-store, no-cache, must-revalidate',
     'Pragma':'no-cache',
