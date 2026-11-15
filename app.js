@@ -332,6 +332,23 @@ function selectedAnchors() { return anchors.filter(a => selectedAnchorIds.includ
 function cleanJoin(parts) {
   return parts.map(x=>(x||'').trim().replace(/^[,\s]+|[,\s]+$/g,'')).filter(Boolean).join(', ');
 }
+function splitTextBlock(value) {
+  const raw = String(value || '');
+  const marker = /(?:^|\n)\s*(?:TEXT|Text|text)\s*:\s*/;
+  const match = raw.match(marker);
+  if (!match || match.index == null) return { visual: raw, text: '' };
+  const markerStart = match.index + (match[0].startsWith('\n') ? 1 : 0);
+  const contentStart = match.index + match[0].length;
+  return {
+    visual: raw.slice(0, markerStart).trim().replace(/[,\s]+$/g,''),
+    text: raw.slice(contentStart).trim()
+  };
+}
+function joinPromptWithText(visualParts, textParts) {
+  const visual = cleanJoin(visualParts);
+  const texts = textParts.map(x=>String(x||'').trim()).filter(Boolean);
+  return texts.length ? `${visual}${visual ? '\n' : ''}TEXT: ${texts.join('\n\n')}` : visual;
+}
 function characterPlaceholderNames(text) {
   const names = new Set();
   String(text || '').replace(/\[([^\[\]\r\n]{1,100})\]/g, (match, rawName) => {
@@ -355,15 +372,6 @@ function applyQualityTags(prompt) {
   const p = prompt.trim();
   if (mode === 'off' || !q) return p;
   if (mode === 'prefix') return p ? `${q}, ${p}` : q;
-  if (els.protectTextBlock.checked) {
-    const match = p.match(/(^|\n)\s*(?:TEXT|text)\s*:/);
-    if (match && match.index != null) {
-      const idx = match.index + (match[1] ? match[1].length : 0);
-      const head = p.slice(0,idx).trim().replace(/[\s,]+$/,'');
-      const tail = p.slice(idx).trimStart();
-      return `${head}${head ? ', ' : ''}${q}\n${tail}`;
-    }
-  }
   return p ? `${p.replace(/[\s,]+$/,'')}, ${q}` : q;
 }
 function stripCharacterPlaceholders(text) {
@@ -384,8 +392,13 @@ function hasCharacterSubjectTag(prompt) {
 }
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
-  const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
-  const promptWithScene = cleanJoin([presetPrompt, els.scenePrompt.value]);
+  const presetArtist = splitTextBlock(preset?.artist || '');
+  const presetPositive = splitTextBlock(preset?.positive || '');
+  const scene = splitTextBlock(els.scenePrompt.value);
+  const textParts = [presetArtist.text, presetPositive.text, scene.text].filter(Boolean);
+
+  const presetPrompt = cleanJoin([presetArtist.visual, presetPositive.visual]);
+  const promptWithScene = cleanJoin([presetPrompt, scene.visual]);
   const explicitPlaceholderNames = characterPlaceholderNames(promptWithScene);
   const chosenAnchors = [];
   const seenAnchors = new Set();
@@ -394,31 +407,37 @@ function assemblePrompts(includeSelectedAnchors = true) {
     seenAnchors.add(anchor.id);
     chosenAnchors.push(anchor);
   };
+
   if (includeSelectedAnchors) {
     selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).forEach(addAnchor);
   }
   explicitPlaceholderNames.forEach(name => addAnchor(anchors.find(a => a.name === name)));
 
-  // Keep the assembled preview exactly as before so copying/editing the workbench
-  // still shows a complete flat prompt. Only the NAI request is separated below.
   const anchorText = includeSelectedAnchors
     ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt)
     : [];
-  const positive = applyQualityTags(expandCharacterPlaceholders(cleanJoin([presetPrompt, ...anchorText, els.scenePrompt.value])));
+
+  const expandedVisual = expandCharacterPlaceholders(
+    cleanJoin([presetPrompt, ...anchorText, scene.visual])
+  );
+  const positive = joinPromptWithText([applyQualityTags(expandedVisual)], textParts);
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
 
   if (!supportsCharacterPrompts(els.model.value) || !chosenAnchors.length) {
     return { positive, basePositive: positive, negative, characters: [] };
   }
 
-  let basePrompt = stripCharacterPlaceholders(promptWithScene);
-  if (!hasCharacterSubjectTag(basePrompt)) {
+  let baseVisual = stripCharacterPlaceholders(promptWithScene);
+  if (!hasCharacterSubjectTag(baseVisual)) {
     const subjectTags = chosenAnchors.map(anchor => characterSubjectTag(anchor.prompt)).filter(Boolean);
-    basePrompt = cleanJoin([...subjectTags, basePrompt]);
+    baseVisual = cleanJoin([...subjectTags, baseVisual]);
   }
+
+  const basePositive = joinPromptWithText([applyQualityTags(baseVisual)], textParts);
+
   return {
     positive,
-    basePositive: applyQualityTags(basePrompt),
+    basePositive,
     negative,
     characters: chosenAnchors.map(anchor => ({ name: anchor.name, anchor: anchor.name, prompt: '' })),
   };
