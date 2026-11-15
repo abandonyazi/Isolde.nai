@@ -19,7 +19,7 @@ const els = {
   qualityTags: $('qualityTags'), qualityPosition: $('qualityPosition'),
   assembledPrompt: $('assembledPrompt'), assembledNegative: $('assembledNegative'),
   aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), seed: $('seed'),
-  clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
+  clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'), insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
   presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
@@ -553,6 +553,22 @@ function renderAnchorPicker() {
     });
     els.anchorPicker.appendChild(b);
   }
+}
+function insertSelectedAnchorPrompts() {
+  const selected = selectedAnchorIds.map(id=>anchors.find(anchor=>anchor.id===id)).filter(Boolean);
+  if(!selected.length){ showToast('先选角色锚点'); return; }
+  const prompts = selected
+    .map(anchor=>String(anchor.prompt||'').trim().replace(/[,\s]+$/g,''))
+    .filter(Boolean);
+  if(!prompts.length){ showToast('选中的角色还没有外观词'); return; }
+
+  const current = String(els.scenePrompt.value||'').trim();
+  const inserted = prompts.join(',\n');
+  els.scenePrompt.value = current ? `${inserted},\n${current}` : inserted;
+  updateAssembly();
+  els.scenePrompt.focus();
+  els.scenePrompt.setSelectionRange(inserted.length, inserted.length);
+  showToast(selected.length > 1 ? `已插入 ${selected.length} 个角色词` : `已插入「${selected[0].name}」角色词`);
 }
 function makeButton(text, cls, fn) {
   const b = document.createElement('button');
@@ -2363,6 +2379,7 @@ els.seed.addEventListener('change',saveSettings);
 els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els.extraNegative.value='';updateAssembly();els.scenePrompt.focus();});
 els.randomSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();saveSettings();});
 els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
+els.insertAnchorPromptsBtn?.addEventListener('click',insertSelectedAnchorPrompts);
 els.generateBtn.addEventListener('click',()=>generate());
 els.saveLink?.addEventListener('click',async()=>{
   if(!currentResultBlob){showToast('还没有可保存的图片');return;}
