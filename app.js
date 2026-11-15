@@ -1882,25 +1882,6 @@ async function exportGalleryZip(){
     keys.sort((a,b)=>Number(b)-Number(a));
 
     const { Zip, ZipPassThrough, strToU8 } = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
-    const chunks = [];
-    let zipSettled = false;
-    let resolveZip;
-    let rejectZip;
-    const zipDone = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
-    const zip = new Zip((err,data,final)=>{
-      if(zipSettled) return;
-      if(err){
-        zipSettled = true;
-        rejectZip(err);
-        return;
-      }
-      if(data?.length) chunks.push(data);
-      if(final){
-        zipSettled = true;
-        resolveZip(new Blob(chunks,{type:'application/zip'}));
-      }
-    });
-
     const readRecord = (key)=>new Promise((resolve,reject)=>{
       const tx = db.transaction('history','readonly');
       const req = tx.objectStore('history').get(key);
@@ -1908,15 +1889,66 @@ async function exportGalleryZip(){
       req.onerror = ()=>reject(req.error);
     });
 
-    const used = new Map();
-    const metadata = [];
     const pad = (n) => String(n).padStart(2,'0');
     const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
+    const used = new Map();
+    const PART_LIMIT = 20 * 1024 * 1024;
+    const now = new Date();
+    const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
     let packed = 0;
+    let partNo = 0;
+    let current = null;
+
+    const newPart = ()=>{
+      const chunks = [];
+      let settled = false;
+      let resolveZip;
+      let rejectZip;
+      const done = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
+      const zip = new Zip((err,data,final)=>{
+        if(settled) return;
+        if(err){
+          settled = true;
+          rejectZip(err);
+          return;
+        }
+        if(data?.length) chunks.push(data);
+        if(final){
+          settled = true;
+          resolveZip(new Blob(chunks,{type:'application/zip'}));
+        }
+      });
+      return {zip,chunks,done,metadata:[],rawBytes:0,count:0};
+    };
+
+    const finishPart = async ()=>{
+      if(!current || !current.count) return;
+      const metaEntry = new ZipPassThrough('metadata.json');
+      current.zip.add(metaEntry);
+      metaEntry.push(strToU8(JSON.stringify(current.metadata,null,2)),true);
+      current.zip.end();
+
+      const blob = await current.done;
+      partNo++;
+      const filename = `isolde-nai-gallery-${day}-part-${String(partNo).padStart(2,'0')}.zip`;
+      fallbackDownload(blob,filename);
+
+      current.chunks.length = 0;
+      current.metadata.length = 0;
+      current = null;
+      await new Promise(r => setTimeout(r,350));
+    };
 
     for(let i=0;i<keys.length;i++){
       const item = await readRecord(keys[i]);
       if(!item?.blob) continue;
+
+      const itemSize = Number(item.blob.size || 0);
+      if(current?.count && current.rawBytes + itemSize > PART_LIMIT){
+        btn.textContent = `正在保存第 ${partNo+1} 卷…`;
+        await finishPart();
+      }
+      if(!current) current = newPart();
 
       const d = new Date(item.createdAt || Date.now());
       const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
@@ -1928,7 +1960,7 @@ async function exportGalleryZip(){
       const name = `${base}${count ? `_${count+1}` : ''}.png`;
 
       const entry = new ZipPassThrough(name);
-      zip.add(entry);
+      current.zip.add(entry);
       if(typeof item.blob.stream === 'function'){
         const reader = item.blob.stream().getReader();
         try{
@@ -1945,7 +1977,9 @@ async function exportGalleryZip(){
         entry.push(new Uint8Array(await item.blob.arrayBuffer()),true);
       }
 
-      metadata.push({
+      current.rawBytes += itemSize;
+      current.count++;
+      current.metadata.push({
         file: name,
         createdAt: item.createdAt || null,
         seed: item.seed || '',
@@ -1971,23 +2005,13 @@ async function exportGalleryZip(){
 
       packed++;
       btn.textContent = `正在打包 ${i+1}/${keys.length}`;
-      if(i % 4 === 0) await new Promise(r => setTimeout(r,0));
+      if(i % 3 === 0) await new Promise(r => setTimeout(r,0));
     }
 
-    const metaEntry = new ZipPassThrough('metadata.json');
-    zip.add(metaEntry);
-    metaEntry.push(strToU8(JSON.stringify(metadata,null,2)),true);
-    zip.end();
-
-    const blob = await zipDone;
-    chunks.length = 0;
+    await finishPart();
     db.close();
     db = null;
-
-    const now = new Date();
-    const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-    await saveBlob(blob,`isolde-nai-gallery-${day}.zip`);
-    showToast(`已打包 ${packed} 张图片`);
+    showToast(`已打包 ${packed} 张图片，共 ${partNo} 个 ZIP`);
   }catch(e){
     console.error(e);
     showToast((e?.message || String(e)).slice(0,180));
