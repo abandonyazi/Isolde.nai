@@ -1025,14 +1025,15 @@ async function saveBlob(blob,name){
       const shareData={files:[file]};
       if(!navigator.canShare || navigator.canShare(shareData)){
         await navigator.share(shareData);
-        return;
+        return true;
       }
     }catch(e){
-      if(e?.name==='AbortError') return;
+      if(e?.name==='AbortError') return false;
       console.warn('iOS 文件分享失败，回退普通下载',e);
     }
   }
   fallbackDownload(blob,name);
+  return true;
 }
 function loadCanvasImage(src){
   return new Promise((resolve,reject)=>{
@@ -2024,6 +2025,26 @@ function resetPreparedGalleryZip(){
   preparedGalleryZip=null;
   if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=true;
 }
+async function buildPreparedGalleryZipBlob(exportId,chunkCount){
+  const db=await openDb();
+  try{
+    const parts=[];
+    for(let i=0;i<chunkCount;i++){
+      const part=await new Promise((resolve,reject)=>{
+        const tx=db.transaction('exportChunks','readonly');
+        const req=tx.objectStore('exportChunks').get(`${exportId}:${i}`);
+        req.onsuccess=()=>resolve(req.result?.blob||null);
+        req.onerror=()=>reject(req.error);
+      });
+      if(!part) throw new Error(`ZIP 临时块缺失：${i+1}/${chunkCount}`);
+      parts.push(part);
+      if(i%64===0) await new Promise(r=>setTimeout(r,0));
+    }
+    return new Blob(parts,{type:'application/zip'});
+  }finally{
+    db.close();
+  }
+}
 async function clearGalleryExportChunks(){
   const db=await openDb();
   try{
@@ -2216,10 +2237,9 @@ async function exportGalleryZip(){
 
     await writeJob({status:'done',chunkCount:chunkIndex,totalBytes,packed,finishedAt:Date.now()});
 
-    const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}/${encodeURIComponent(filename)}`,location.href);
-    downloadUrl.searchParams.set('name',filename);
-    downloadUrl.searchParams.set('started',String(Date.now()));
-    preparedGalleryZip={href:downloadUrl.href,filename,packed};
+    setGalleryExportProgress(99,'正在准备下载文件…');
+    const preparedBlob=await buildPreparedGalleryZipBlob(exportId,chunkIndex);
+    preparedGalleryZip={blob:preparedBlob,filename,packed,exportId};
 
     if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=false;
     setGalleryExportProgress(100,`打包完成 · ${packed} 张图片`);
@@ -2250,21 +2270,29 @@ async function exportGalleryZip(){
     btn.textContent=originalLabel;
   }
 }
-function downloadPreparedGalleryZip(){
-  if(!preparedGalleryZip){
+async function downloadPreparedGalleryZip(){
+  if(!preparedGalleryZip?.blob){
     showToast('先完成图库打包');
     return;
   }
-  const link=document.createElement('a');
-  link.href=preparedGalleryZip.href;
-  link.download=preparedGalleryZip.filename;
-  link.style.display='none';
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
-  if(els.downloadGalleryZipBtn) els.downloadGalleryZipBtn.disabled=true;
-  setGalleryExportProgress(100,'下载已开始');
-  preparedGalleryZip=null;
+  const btn=els.downloadGalleryZipBtn;
+  const ready=preparedGalleryZip;
+  if(btn) btn.disabled=true;
+  try{
+    const saved=await saveBlob(ready.blob,ready.filename);
+    if(saved){
+      setGalleryExportProgress(100,'文件已交给系统保存');
+      preparedGalleryZip=null;
+      clearGalleryExportChunks().catch(()=>{});
+    }else{
+      if(btn) btn.disabled=false;
+      setGalleryExportProgress(100,`打包完成 · ${ready.packed} 张图片`);
+    }
+  }catch(e){
+    console.error(e);
+    if(btn) btn.disabled=false;
+    showToast((e?.message||'ZIP 保存失败').slice(0,180));
+  }
 }
 
 async function clearGallery(){
