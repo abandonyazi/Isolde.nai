@@ -19,7 +19,7 @@ const els = {
   qualityTags: $('qualityTags'), qualityPosition: $('qualityPosition'),
   assembledPrompt: $('assembledPrompt'), assembledNegative: $('assembledNegative'),
   aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), seed: $('seed'),
-  clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'), insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'),
+  clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'), insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
   presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
@@ -43,6 +43,7 @@ let currentResultBlob = null;
 let currentSeed = '';
 let busy = false;
 let toastTimer = null;
+let sceneInsertSelection = null;
 let currentWatermarkAsset = null;
 let watermarkPreviewUrl = null;
 let currentReferenceAsset = null;
@@ -554,33 +555,71 @@ function renderAnchorPicker() {
     els.anchorPicker.appendChild(b);
   }
 }
-function insertSelectedAnchorPrompts() {
-  const selected = selectedAnchorIds.map(id=>anchors.find(anchor=>anchor.id===id)).filter(Boolean);
-  if(!selected.length){ showToast('先选角色锚点'); return; }
-  const prompts = selected
+function selectedAnchorList() {
+  return selectedAnchorIds.map(id=>anchors.find(anchor=>anchor.id===id)).filter(Boolean);
+}
+function rememberSceneInsertSelection() {
+  const textarea=els.scenePrompt;
+  const current=String(textarea.value||'');
+  const start=Number.isInteger(textarea.selectionStart)?textarea.selectionStart:current.length;
+  const end=Number.isInteger(textarea.selectionEnd)?textarea.selectionEnd:start;
+  sceneInsertSelection={start,end};
+}
+function insertAnchorPrompts(items) {
+  const selected=Array.isArray(items)?items.filter(Boolean):[];
+  if(!selected.length){showToast('先选角色锚点');return;}
+  const prompts=selected
     .map(anchor=>String(anchor.prompt||'').trim().replace(/[,\s]+$/g,''))
     .filter(Boolean);
-  if(!prompts.length){ showToast('选中的角色还没有外观词'); return; }
+  if(!prompts.length){showToast('选中的角色还没有外观词');return;}
 
-  const textarea = els.scenePrompt;
-  const current = String(textarea.value||'');
-  const start = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : current.length;
-  const end = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : start;
-  const before = current.slice(0,start);
-  const after = current.slice(end);
-  const anchorText = prompts.join(',\n');
+  const textarea=els.scenePrompt;
+  const current=String(textarea.value||'');
+  const saved=sceneInsertSelection||{};
+  const start=Number.isInteger(saved.start)?Math.min(saved.start,current.length):(Number.isInteger(textarea.selectionStart)?textarea.selectionStart:current.length);
+  const end=Number.isInteger(saved.end)?Math.min(saved.end,current.length):(Number.isInteger(textarea.selectionEnd)?textarea.selectionEnd:start);
+  const before=current.slice(0,start);
+  const after=current.slice(end);
+  const anchorText=prompts.join(',\n');
 
-  const leftNeedsSep = before && !/[\s,]$/.test(before);
-  const rightNeedsSep = after && !/^[\s,]/.test(after);
-  const inserted = `${leftNeedsSep ? ', ' : ''}${anchorText}${rightNeedsSep ? ', ' : ''}`;
+  const leftNeedsSep=before&&!/[\s,]$/.test(before);
+  const rightNeedsSep=after&&!/^[\s,]/.test(after);
+  const inserted=`${leftNeedsSep?', ':''}${anchorText}${rightNeedsSep?', ':''}`;
 
-  textarea.value = before + inserted + after;
+  textarea.value=before+inserted+after;
   updateAssembly();
   textarea.focus();
-  const caret = before.length + inserted.length;
+  const caret=before.length+inserted.length;
   textarea.setSelectionRange(caret,caret);
-  showToast(selected.length > 1 ? `已插入 ${selected.length} 个角色词` : `已插入「${selected[0].name}」角色词`);
+  sceneInsertSelection={start:caret,end:caret};
+  els.insertAnchorMenu?.classList.add('hidden');
+  showToast(selected.length>1?`已插入 ${selected.length} 个角色词`:`已插入「${selected[0].name}」角色词`);
 }
+function renderInsertAnchorMenu() {
+  const menu=els.insertAnchorMenu;
+  if(!menu)return;
+  const selected=selectedAnchorList();
+  menu.innerHTML='';
+  if(!selected.length){menu.classList.add('hidden');showToast('先选角色锚点');return;}
+  if(selected.length===1){insertAnchorPrompts(selected);return;}
+
+  for(const anchor of selected){
+    const b=document.createElement('button');
+    b.type='button';
+    b.className='scene-insert-option';
+    b.textContent=anchor.name;
+    b.addEventListener('click',(event)=>{event.stopPropagation();insertAnchorPrompts([anchor]);});
+    menu.appendChild(b);
+  }
+  const all=document.createElement('button');
+  all.type='button';
+  all.className='scene-insert-option scene-insert-all';
+  all.textContent='全部';
+  all.addEventListener('click',(event)=>{event.stopPropagation();insertAnchorPrompts(selected);});
+  menu.appendChild(all);
+  menu.classList.toggle('hidden',!menu.classList.contains('hidden'));
+}
+
 function makeButton(text, cls, fn) {
   const b = document.createElement('button');
   b.type='button'; b.textContent=text; b.className=cls; b.addEventListener('click',fn); return b;
@@ -2381,7 +2420,11 @@ els.seed.addEventListener('change',saveSettings);
 els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els.extraNegative.value='';updateAssembly();els.scenePrompt.focus();});
 els.randomSeedBtn.addEventListener('click',()=>{els.seed.value=randomSeed();saveSettings();});
 els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
-els.insertAnchorPromptsBtn?.addEventListener('click',insertSelectedAnchorPrompts);
+els.insertAnchorPromptsBtn?.addEventListener('pointerdown',rememberSceneInsertSelection);
+els.insertAnchorPromptsBtn?.addEventListener('click',(event)=>{event.stopPropagation();renderInsertAnchorMenu();});
+els.insertAnchorMenu?.addEventListener('pointerdown',(event)=>event.stopPropagation());
+document.addEventListener('click',()=>els.insertAnchorMenu?.classList.add('hidden'));
+document.addEventListener('keydown',(event)=>{if(event.key==='Escape')els.insertAnchorMenu?.classList.add('hidden');});
 els.generateBtn.addEventListener('click',()=>generate());
 els.saveLink?.addEventListener('click',async()=>{
   if(!currentResultBlob){showToast('还没有可保存的图片');return;}
