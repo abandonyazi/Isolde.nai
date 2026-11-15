@@ -2216,7 +2216,7 @@ async function exportGalleryZip(){
 
     await writeJob({status:'done',chunkCount:chunkIndex,totalBytes,packed,finishedAt:Date.now()});
 
-    const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}`,location.href);
+    const downloadUrl=new URL(`./__isolde_export__/${encodeURIComponent(exportId)}/${encodeURIComponent(filename)}`,location.href);
     downloadUrl.searchParams.set('name',filename);
     downloadUrl.searchParams.set('started',String(Date.now()));
     preparedGalleryZip={href:downloadUrl.href,filename,packed};
