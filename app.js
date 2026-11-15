@@ -392,12 +392,15 @@ function hasCharacterSubjectTag(prompt) {
 }
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
-  const presetArtist = splitTextBlock(preset?.artist || '');
-  const presetPositive = splitTextBlock(preset?.positive || '');
-  const scene = splitTextBlock(els.scenePrompt.value);
-  const textParts = [presetArtist.text, presetPositive.text, scene.text].filter(Boolean);
+  const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
 
-  const presetPrompt = cleanJoin([presetArtist.visual, presetPositive.visual]);
+  // TEXT belongs to the scene prompt. Keep the scene block semantically intact,
+  // only separating its visual part from TEXT long enough to keep TEXT at the
+  // end of that same scene block.
+  const scene = els.protectTextBlock.checked
+    ? splitTextBlock(els.scenePrompt.value)
+    : { visual: els.scenePrompt.value, text: '' };
+
   const promptWithScene = cleanJoin([presetPrompt, scene.visual]);
   const explicitPlaceholderNames = characterPlaceholderNames(promptWithScene);
   const chosenAnchors = [];
@@ -417,17 +420,19 @@ function assemblePrompts(includeSelectedAnchors = true) {
     ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt)
     : [];
 
-  // Keep the scene prompt as the final normal visual block.
-  // Quality tags are applied to preset/anchor content before the scene,
-  // while TEXT remains isolated at the absolute end.
   const visualCore = expandCharacterPlaceholders(
     cleanJoin([presetPrompt, ...anchorText])
   );
+  const sceneVisual = expandCharacterPlaceholders(scene.visual);
+
   const positiveVisual = cleanJoin([
     applyQualityTags(visualCore),
-    expandCharacterPlaceholders(scene.visual)
+    sceneVisual
   ]);
-  const positive = joinPromptWithText([positiveVisual], textParts);
+  const positive = scene.text
+    ? `${positiveVisual}${positiveVisual ? '\n' : ''}TEXT: ${scene.text}`
+    : positiveVisual;
+
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
 
   if (!supportsCharacterPrompts(els.model.value) || !chosenAnchors.length) {
@@ -440,11 +445,14 @@ function assemblePrompts(includeSelectedAnchors = true) {
     baseCore = cleanJoin([...subjectTags, baseCore]);
   }
 
+  const baseSceneVisual = stripCharacterPlaceholders(scene.visual);
   const baseVisual = cleanJoin([
     applyQualityTags(baseCore),
-    stripCharacterPlaceholders(scene.visual)
+    baseSceneVisual
   ]);
-  const basePositive = joinPromptWithText([baseVisual], textParts);
+  const basePositive = scene.text
+    ? `${baseVisual}${baseVisual ? '\n' : ''}TEXT: ${scene.text}`
+    : baseVisual;
 
   return {
     positive,
