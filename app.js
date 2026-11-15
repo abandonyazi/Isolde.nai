@@ -562,12 +562,23 @@ function insertSelectedAnchorPrompts() {
     .filter(Boolean);
   if(!prompts.length){ showToast('选中的角色还没有外观词'); return; }
 
-  const current = String(els.scenePrompt.value||'').trim();
-  const inserted = prompts.join(',\n');
-  els.scenePrompt.value = current ? `${inserted},\n${current}` : inserted;
+  const textarea = els.scenePrompt;
+  const current = String(textarea.value||'');
+  const start = Number.isInteger(textarea.selectionStart) ? textarea.selectionStart : current.length;
+  const end = Number.isInteger(textarea.selectionEnd) ? textarea.selectionEnd : start;
+  const before = current.slice(0,start);
+  const after = current.slice(end);
+  const anchorText = prompts.join(',\n');
+
+  const leftNeedsSep = before && !/[\s,]$/.test(before);
+  const rightNeedsSep = after && !/^[\s,]/.test(after);
+  const inserted = `${leftNeedsSep ? ', ' : ''}${anchorText}${rightNeedsSep ? ', ' : ''}`;
+
+  textarea.value = before + inserted + after;
   updateAssembly();
-  els.scenePrompt.focus();
-  els.scenePrompt.setSelectionRange(inserted.length, inserted.length);
+  textarea.focus();
+  const caret = before.length + inserted.length;
+  textarea.setSelectionRange(caret,caret);
   showToast(selected.length > 1 ? `已插入 ${selected.length} 个角色词` : `已插入「${selected[0].name}」角色词`);
 }
 function makeButton(text, cls, fn) {
