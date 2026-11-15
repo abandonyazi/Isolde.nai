@@ -51,6 +51,8 @@ h2 { margin:0; font-size:18px; }
 .field { display:block; margin-top:13px; }
 .field > span,.field-head > span { display:block; color:var(--muted); font-size:13px; margin-bottom:6px; }
 .field-head > span { margin-bottom:0; }
+.scene-prompt-head { margin-bottom:6px; }
+.scene-insert-btn { min-height:30px; padding:0 4px; font-size:12px; white-space:nowrap; }
 input,select,textarea { width:100%; border:1px solid var(--line); background:rgba(255,255,255,.76); color:var(--text); border-radius:14px; outline:none; font-size:16px; }
 input,select { min-height:44px; padding:0 13px; }
 textarea { resize:vertical; min-height:88px; padding:12px 13px; line-height:1.55; }
