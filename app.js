@@ -347,7 +347,7 @@ function splitTextBlock(value) {
 function joinPromptWithText(visualParts, textParts) {
   const visual = cleanJoin(visualParts);
   const texts = textParts.map(x=>String(x||'').trim()).filter(Boolean);
-  return texts.length ? `${visual}${visual ? '\n' : ''}TEXT: ${texts.join('\n\n')}` : visual;
+  return texts.length ? `${visual}${visual ? '\n' : ''}Text: ${texts.join('\n\n')}` : visual;
 }
 function characterPlaceholderNames(text) {
   const names = new Set();
@@ -430,7 +430,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
     sceneVisual
   ]);
   const positive = scene.text
-    ? `${positiveVisual}${positiveVisual ? '\n' : ''}TEXT: ${scene.text}`
+    ? `${positiveVisual}${positiveVisual ? '\n' : ''}Text: ${scene.text}`
     : positiveVisual;
 
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
@@ -451,7 +451,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
     baseSceneVisual
   ]);
   const basePositive = scene.text
-    ? `${baseVisual}${baseVisual ? '\n' : ''}TEXT: ${scene.text}`
+    ? `${baseVisual}${baseVisual ? '\n' : ''}Text: ${scene.text}`
     : baseVisual;
 
   return {
