@@ -1869,20 +1869,55 @@ async function exportGalleryZip(){
   const originalLabel = btn.textContent;
   btn.disabled = true;
   btn.textContent = '正在打包…';
+  let db = null;
   try{
-    const items = await getGallery();
-    if(!items.length){ showToast('图库还是空的'); return; }
+    db = await openDb();
+    const keys = await new Promise((resolve,reject)=>{
+      const tx = db.transaction('history','readonly');
+      const req = tx.objectStore('history').getAllKeys();
+      req.onsuccess = ()=>resolve(req.result || []);
+      req.onerror = ()=>reject(req.error);
+    });
+    if(!keys.length){ showToast('图库还是空的'); return; }
+    keys.sort((a,b)=>Number(b)-Number(a));
 
-    const { zipSync, strToU8 } = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
-    const files = {};
+    const { Zip, ZipPassThrough, strToU8 } = await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
+    const chunks = [];
+    let zipSettled = false;
+    let resolveZip;
+    let rejectZip;
+    const zipDone = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
+    const zip = new Zip((err,data,final)=>{
+      if(zipSettled) return;
+      if(err){
+        zipSettled = true;
+        rejectZip(err);
+        return;
+      }
+      if(data?.length) chunks.push(data);
+      if(final){
+        zipSettled = true;
+        resolveZip(new Blob(chunks,{type:'application/zip'}));
+      }
+    });
+
+    const readRecord = (key)=>new Promise((resolve,reject)=>{
+      const tx = db.transaction('history','readonly');
+      const req = tx.objectStore('history').get(key);
+      req.onsuccess = ()=>resolve(req.result || null);
+      req.onerror = ()=>reject(req.error);
+    });
+
     const used = new Map();
     const metadata = [];
-
     const pad = (n) => String(n).padStart(2,'0');
     const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
+    let packed = 0;
 
-    for(let i=0;i<items.length;i++){
-      const item = items[i];
+    for(let i=0;i<keys.length;i++){
+      const item = await readRecord(keys[i]);
+      if(!item?.blob) continue;
+
       const d = new Date(item.createdAt || Date.now());
       const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
       const seed = safe(item.seed || 'noseed');
@@ -1891,8 +1926,24 @@ async function exportGalleryZip(){
       const count = used.get(base) || 0;
       used.set(base, count + 1);
       const name = `${base}${count ? `_${count+1}` : ''}.png`;
-      const bytes = new Uint8Array(await item.blob.arrayBuffer());
-      files[name] = bytes;
+
+      const entry = new ZipPassThrough(name);
+      zip.add(entry);
+      if(typeof item.blob.stream === 'function'){
+        const reader = item.blob.stream().getReader();
+        try{
+          while(true){
+            const part = await reader.read();
+            if(part.done) break;
+            if(part.value?.length) entry.push(part.value,false);
+          }
+          entry.push(new Uint8Array(0),true);
+        }finally{
+          reader.releaseLock?.();
+        }
+      }else{
+        entry.push(new Uint8Array(await item.blob.arrayBuffer()),true);
+      }
 
       metadata.push({
         file: name,
@@ -1918,28 +1969,30 @@ async function exportGalleryZip(){
         negative: item.assembledNegative || item.extraNegative || item.negative || ''
       });
 
-      btn.textContent = `正在打包 ${i+1}/${items.length}`;
-      if(i % 8 === 0) await new Promise(r => setTimeout(r,0));
+      packed++;
+      btn.textContent = `正在打包 ${i+1}/${keys.length}`;
+      if(i % 4 === 0) await new Promise(r => setTimeout(r,0));
     }
 
-    files['metadata.json'] = strToU8(JSON.stringify(metadata, null, 2));
-    const zipped = zipSync(files, { level: 0 });
-    const blob = new Blob([zipped], { type:'application/zip' });
-    const url = URL.createObjectURL(blob);
+    const metaEntry = new ZipPassThrough('metadata.json');
+    zip.add(metaEntry);
+    metaEntry.push(strToU8(JSON.stringify(metadata,null,2)),true);
+    zip.end();
+
+    const blob = await zipDone;
+    chunks.length = 0;
+    db.close();
+    db = null;
+
     const now = new Date();
     const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = `isolde-nai-gallery-${day}.zip`;
-    document.body.appendChild(a);
-a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-    showToast(`已打包 ${items.length} 张图片`);
+    await saveBlob(blob,`isolde-nai-gallery-${day}.zip`);
+    showToast(`已打包 ${packed} 张图片`);
   }catch(e){
     console.error(e);
     showToast((e?.message || String(e)).slice(0,180));
   }finally{
+    if(db) db.close();
     btn.disabled = false;
     btn.textContent = originalLabel;
   }
