@@ -16,7 +16,7 @@ const els = {
   connectionBanner: $('connectionBanner'), connectionText: $('connectionText'),
   presetSelect: $('presetSelect'), anchorPicker: $('anchorPicker'),
   scenePrompt: $('scenePrompt'), extraNegative: $('extraNegative'),
-  qualityTags: $('qualityTags'), qualityPosition: $('qualityPosition'), protectTextBlock: $('protectTextBlock'),
+  qualityTags: $('qualityTags'), qualityPosition: $('qualityPosition'),
   assembledPrompt: $('assembledPrompt'), assembledNegative: $('assembledNegative'),
   aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), seed: $('seed'),
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
@@ -317,7 +317,6 @@ function loadState() {
   els.seed.value = '';
   els.qualityTags.value = settings.qualityTags || 'masterpiece, best quality, very aesthetic';
   els.qualityPosition.value = settings.qualityPosition || 'prefix';
-  els.protectTextBlock.checked = settings.protectTextBlock !== false;
   els.scenePrompt.value = settings.scenePrompt || '';
   els.extraNegative.value = settings.extraNegative || '';
   els.watermarkOpacity.value = String(Number.isFinite(Number(settings.watermarkOpacity)) ? Math.max(0,Math.min(100,Number(settings.watermarkOpacity))) : 100);
@@ -354,7 +353,6 @@ function saveSettings() {
     steps: Number(els.steps.value), cfg: Number(els.cfg.value),
     qualityTags: els.qualityTags.value.trim(),
     qualityPosition: els.qualityPosition.value,
-    protectTextBlock: els.protectTextBlock.checked,
     scenePrompt: els.scenePrompt.value,
     extraNegative: els.extraNegative.value,
     watermarkOpacity: Number(els.watermarkOpacity.value),
@@ -390,23 +388,6 @@ function currentPreset() { return presets.find(p => p.id === els.presetSelect.va
 function selectedAnchors() { return anchors.filter(a => selectedAnchorIds.includes(a.id)); }
 function cleanJoin(parts) {
   return parts.map(x=>(x||'').trim().replace(/^[,\s]+|[,\s]+$/g,'')).filter(Boolean).join(', ');
-}
-function splitTextBlock(value) {
-  const raw = String(value || '');
-  const marker = /(?:^|\n)\s*(?:TEXT|Text|text)\s*:\s*/;
-  const match = raw.match(marker);
-  if (!match || match.index == null) return { visual: raw, text: '' };
-  const markerStart = match.index + (match[0].startsWith('\n') ? 1 : 0);
-  const contentStart = match.index + match[0].length;
-  return {
-    visual: raw.slice(0, markerStart).trim().replace(/[,\s]+$/g,''),
-    text: raw.slice(contentStart).trim()
-  };
-}
-function joinPromptWithText(visualParts, textParts) {
-  const visual = cleanJoin(visualParts);
-  const texts = textParts.map(x=>String(x||'').trim()).filter(Boolean);
-  return texts.length ? `${visual}${visual ? '\n' : ''}Text: ${texts.join('\n\n')}` : visual;
 }
 function characterPlaceholderNames(text) {
   const names = new Set();
@@ -469,12 +450,11 @@ function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
   const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
 
-  // Keep TEXT attached to the scene block so it remains the absolute end.
-  const scene = els.protectTextBlock.checked
-    ? splitTextBlock(els.scenePrompt.value)
-    : { visual: els.scenePrompt.value, text: '' };
+  // Keep the user's scene prompt intact and place the whole block last.
+  // TEXT:, if present, is ordinary scene-prompt content authored by the user.
+  const scenePrompt = els.scenePrompt.value;
 
-  const promptWithScene = cleanJoin([presetPrompt, scene.visual]);
+  const promptWithScene = cleanJoin([presetPrompt, scenePrompt]);
   const explicitPlaceholderNames = characterPlaceholderNames(promptWithScene);
   const chosenAnchors = [];
   const seenAnchors = new Set();
@@ -507,7 +487,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
   const presetWithoutPlaceholders = stripCharacterPlaceholders(presetPrompt);
   const presetWithoutSubjects = stripCharacterSubjectTags(presetWithoutPlaceholders);
   const styledPreset = applyQualityTags(presetWithoutSubjects);
-  const sceneVisualWithoutPlaceholders = stripCharacterPlaceholders(scene.visual);
+  const sceneVisualWithoutPlaceholders = stripCharacterPlaceholders(scenePrompt);
 
   const positiveVisual = cleanJoin([
     ...subjectTags,
@@ -515,9 +495,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
     styledPreset,
     sceneVisualWithoutPlaceholders
   ]);
-  const positive = scene.text
-    ? `${positiveVisual}${positiveVisual ? '\n' : ''}Text: ${scene.text}`
-    : positiveVisual;
+  const positive = positiveVisual;
 
   const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
 
@@ -533,9 +511,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
     styledPreset,
     sceneVisualWithoutPlaceholders
   ]);
-  const basePositive = scene.text
-    ? `${baseVisual}${baseVisual ? '\n' : ''}Text: ${scene.text}`
-    : baseVisual;
+  const basePositive = baseVisual;
 
   return {
     positive,
@@ -2379,7 +2355,6 @@ els.scenePrompt.addEventListener('input',updateAssembly);
 els.extraNegative.addEventListener('input',updateAssembly);
 els.qualityTags.addEventListener('input',updateAssembly);
 els.qualityPosition.addEventListener('change',updateAssembly);
-els.protectTextBlock.addEventListener('change',updateAssembly);
 els.aspect.addEventListener('change',()=>setAspect(els.aspect.value));
 for(const id of ['sampler','steps','cfg']) els[id].addEventListener('change',saveSettings);
 els.model.addEventListener('change',()=>{updateReferenceModelHint();saveSettings();});
