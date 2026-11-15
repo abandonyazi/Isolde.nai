@@ -449,13 +449,22 @@ function hasCharacterSubjectTag(prompt) {
     /^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(part.trim())
   );
 }
+function stripCharacterSubjectTags(prompt) {
+  return String(prompt || '').split(',').map(part => part.trim()).filter(Boolean).filter(tag =>
+    !/^\d+\s*(?:girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i.test(tag)
+  ).join(', ');
+}
+function subjectTagsFromAnchors(items) {
+  return items.map(anchor => characterSubjectTag(anchor?.prompt || '')).filter(Boolean);
+}
+function orderedAnchorAppearance(items) {
+  return items.map(anchor => stripCharacterSubjectTags(anchor?.prompt || '')).filter(Boolean);
+}
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
   const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
 
-  // TEXT belongs to the scene prompt. Keep the scene block semantically intact,
-  // only separating its visual part from TEXT long enough to keep TEXT at the
-  // end of that same scene block.
+  // Keep TEXT attached to the scene block so it remains the absolute end.
   const scene = els.protectTextBlock.checked
     ? splitTextBlock(els.scenePrompt.value)
     : { visual: els.scenePrompt.value, text: '' };
@@ -475,18 +484,29 @@ function assemblePrompts(includeSelectedAnchors = true) {
   }
   explicitPlaceholderNames.forEach(name => addAnchor(anchors.find(a => a.name === name)));
 
-  const anchorText = includeSelectedAnchors
-    ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name)).map(a=>a.prompt)
+  const selectedForBase = includeSelectedAnchors
+    ? selectedAnchors().filter(a=>!explicitPlaceholderNames.has(a.name))
     : [];
+  const orderedAnchors = [...selectedForBase];
+  explicitPlaceholderNames.forEach(name => {
+    const anchor = anchors.find(a=>a.name===name);
+    if(anchor && !orderedAnchors.some(a=>a.id===anchor.id)) orderedAnchors.push(anchor);
+  });
 
-  const visualCore = expandCharacterPlaceholders(
-    cleanJoin([presetPrompt, ...anchorText])
-  );
-  const sceneVisual = expandCharacterPlaceholders(scene.visual);
+  // NAI-recommended broad order:
+  // subject count/type -> character appearance -> style/artist/quality -> scene -> TEXT.
+  // Preserve each saved anchor's internal appearance order rather than guessing tag semantics.
+  const subjectTags = subjectTagsFromAnchors(orderedAnchors);
+  const appearanceParts = orderedAnchorAppearance(orderedAnchors);
+  const styledPreset = applyQualityTags(presetPrompt);
+  const sceneVisualExpanded = expandCharacterPlaceholders(scene.visual);
+  const sceneVisualWithoutPlaceholders = stripCharacterPlaceholders(scene.visual);
 
   const positiveVisual = cleanJoin([
-    applyQualityTags(visualCore),
-    sceneVisual
+    ...subjectTags,
+    ...appearanceParts,
+    styledPreset,
+    sceneVisualExpanded
   ]);
   const positive = scene.text
     ? `${positiveVisual}${positiveVisual ? '\n' : ''}Text: ${scene.text}`
@@ -498,16 +518,14 @@ function assemblePrompts(includeSelectedAnchors = true) {
     return { positive, basePositive: positive, negative, characters: [] };
   }
 
-  let baseCore = stripCharacterPlaceholders(presetPrompt);
-  if (!hasCharacterSubjectTag(baseCore)) {
-    const subjectTags = chosenAnchors.map(anchor => characterSubjectTag(anchor.prompt)).filter(Boolean);
-    baseCore = cleanJoin([...subjectTags, baseCore]);
-  }
-
-  const baseSceneVisual = stripCharacterPlaceholders(scene.visual);
+  // Character-capable models keep full appearance in char_captions.
+  // The base prompt keeps only the subject count/type, then style, then scene.
+  const baseSubjectTags = subjectTagsFromAnchors(chosenAnchors);
+  const presetHasSubject = hasCharacterSubjectTag(presetPrompt);
   const baseVisual = cleanJoin([
-    applyQualityTags(baseCore),
-    baseSceneVisual
+    ...(presetHasSubject ? [] : baseSubjectTags),
+    styledPreset,
+    sceneVisualWithoutPlaceholders
   ]);
   const basePositive = scene.text
     ? `${baseVisual}${baseVisual ? '\n' : ''}Text: ${scene.text}`
@@ -870,7 +888,7 @@ function ucPresetNoneIndex(model) {
   return 4;
 }
 function normalizeCharacterCaption(value) {
-  return String(value || '').split(',').map((part)=>{
+  const normalized = String(value || '').split(',').map((part)=>{
     const tag=part.trim();
     const counted = tag.match(/^\d+\s*(girls?|boys?|women?|men|woman|man|others?|people|persons?)$/i);
     if (!counted) return tag;
@@ -881,7 +899,10 @@ function normalizeCharacterCaption(value) {
     if (kind === 'men' || kind === 'man') return 'man';
     if (kind.startsWith('other')) return 'other';
     return 'person';
-  }).filter(Boolean).join(', ');
+  }).filter(Boolean);
+  const subject = normalized.filter(tag => /^(?:girl|boy|woman|man|other|person)$/i.test(tag));
+  const rest = normalized.filter(tag => !/^(?:girl|boy|woman|man|other|person)$/i.test(tag));
+  return [...subject, ...rest].join(', ');
 }
 function supportsCharacterPrompts(model) {
   return model.startsWith('nai-diffusion-5') || model.includes('nai-diffusion-4-5');
