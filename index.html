@@ -109,20 +109,14 @@
               <span>质量词</span>
               <input id="qualityTags" value="masterpiece, best quality, very aesthetic" />
             </label>
-            <div class="split">
-              <label class="field">
-                <span>质量词位置</span>
-                <select id="qualityPosition">
-                  <option value="prefix">前置</option>
-                  <option value="suffix">后置</option>
-                  <option value="off">关闭</option>
-                </select>
-              </label>
-              <label class="switch-row">
-                <input id="protectTextBlock" type="checkbox" checked />
-                <span>保护 TEXT: 区块</span>
-              </label>
-            </div>
+            <label class="field">
+              <span>质量词位置</span>
+              <select id="qualityPosition">
+                <option value="prefix">前置</option>
+                <option value="suffix">后置</option>
+                <option value="off">关闭</option>
+              </select>
+            </label>
             <label class="field">
               <span>最终正面预览</span>
               <textarea id="assembledPrompt" rows="6" readonly></textarea>
@@ -560,6 +554,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=63"></script>
+  <script type="module" src="./app.js?v=64"></script>
 </body>
 </html>
