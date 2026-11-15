@@ -128,7 +128,17 @@ function rehydrateConnectionFields() {
 const themeMedia = window.matchMedia?.('(prefers-color-scheme: dark)');
 let themeProbeTimer = null;
 
+function isStandalonePwa() {
+  return window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+}
+
+function timeTheme(now = new Date()) {
+  const hour = now.getHours();
+  return hour >= 19 || hour < 7 ? 'dark' : 'light';
+}
+
 function systemTheme() {
+  if (isStandalonePwa()) return timeTheme();
   return window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 
@@ -167,7 +177,7 @@ function applyTheme(theme) {
   if (els.themeToggle) {
     els.themeToggle.textContent = next === 'dark' ? '☀︎' : '☾';
     els.themeToggle.setAttribute('aria-label', next === 'dark' ? '临时切换到日间模式' : '临时切换到夜间模式');
-    els.themeToggle.title = '临时切换主题，系统下次切换后恢复跟随';
+    els.themeToggle.title = '临时切换主题，下次自动切换后恢复跟随';
   }
 }
 
@@ -215,9 +225,11 @@ function verifySystemThemeAfterResume() {
 }
 
 function handleSystemThemeChange(event) {
-  const next = typeof event?.matches === 'boolean'
-    ? (event.matches ? 'dark' : 'light')
-    : systemTheme();
+  const next = isStandalonePwa()
+    ? timeTheme()
+    : (typeof event?.matches === 'boolean'
+      ? (event.matches ? 'dark' : 'light')
+      : systemTheme());
   followSystemTheme(next);
 }
 
@@ -2309,7 +2321,7 @@ els.themeToggle?.addEventListener('click',()=>{
   clearTimeout(themeProbeTimer);
   themeProbeTimer=null;
   applyTheme(next);
-  showToast('已临时切换，系统下次切换时恢复跟随');
+  showToast('已临时切换，下次 07:00 / 19:00 自动恢复');
 });
 
 if (themeMedia?.addEventListener) themeMedia.addEventListener('change',handleSystemThemeChange);
