@@ -89,7 +89,9 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .empty-result { min-height:230px; display:grid; place-items:center; align-content:center; gap:8px; border:1px dashed rgba(97,128,157,.28); border-radius:22px; color:var(--muted); background:rgba(247,250,253,.60); }
 .empty-orb { width:52px; height:52px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-strong); font-size:22px; }
 .result-wrap img { width:100%; display:block; border-radius:22px; background:rgba(145,179,207,.18); }
-.result-actions { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+.result-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
+.result-actions .secondary-btn { width:100%; min-height:46px; padding:0 10px; border-radius:14px; font-size:14px; white-space:nowrap; }
+.result-wrap + .generate-btn { margin-top:12px; }
 
 .library-list { display:grid; gap:10px; }
 .library-card { background:var(--card); border:1px solid var(--line); border-radius:18px; padding:14px; box-shadow:var(--shadow); }
