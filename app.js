@@ -1054,6 +1054,32 @@ function showResult(blob,seed){
 function isIOSLike(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
 }
+function pngChunkType(bytes,offset){
+  return String.fromCharCode(bytes[offset+4],bytes[offset+5],bytes[offset+6],bytes[offset+7]);
+}
+async function stripPngMetadata(blob){
+  if(!(blob instanceof Blob) || blob.type && blob.type!=='image/png') return blob;
+  const bytes=new Uint8Array(await blob.arrayBuffer());
+  if(bytes.length<8 || bytes[0]!==0x89 || bytes[1]!==0x50 || bytes[2]!==0x4e || bytes[3]!==0x47) return blob;
+
+  const parts=[bytes.slice(0,8)];
+  const removable=new Set(['tEXt','zTXt','iTXt','eXIf','tIME']);
+  let offset=8;
+  while(offset+12<=bytes.length){
+    const length=((bytes[offset]<<24)>>>0)+(bytes[offset+1]<<16)+(bytes[offset+2]<<8)+bytes[offset+3];
+    const end=offset+12+length;
+    if(end>bytes.length) return blob;
+    const type=pngChunkType(bytes,offset);
+    if(!removable.has(type)) parts.push(bytes.slice(offset,end));
+    offset=end;
+    if(type==='IEND') break;
+  }
+  return new Blob(parts,{type:'image/png'});
+}
+async function saveImageBlob(blob,name){
+  const clean=await stripPngMetadata(blob);
+  return saveBlob(clean,name);
+}
 function fallbackDownload(blob,name){
   const url=URL.createObjectURL(blob);
   const a=document.createElement('a');
@@ -1949,7 +1975,7 @@ async function renderGallery(){
       const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);ib.addEventListener('click',()=>applyGalleryMeta(item));card.appendChild(ib);
       const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
       const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
-      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('原图','',()=>saveBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id,card)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('保存图片','',()=>saveImageBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id,card)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
     }
   }catch(e){console.warn(e);showToast('图库读取失败');}
 }
@@ -2196,7 +2222,6 @@ async function exportGalleryZip(){
     const centralEntries=[];
     let zipOffset=0;
     const used=new Map();
-    const metadata=[];
     const safe=(value)=>String(value||'').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
     let packed=0;
 
@@ -2213,9 +2238,10 @@ async function exportGalleryZip(){
       used.set(base,duplicateCount+1);
       const name=`${base}${duplicateCount?`_${duplicateCount+1}`:''}.png`;
 
+      const cleanBlob=await stripPngMetadata(item.blob);
       const zipEntry=await streamStoredZipEntry({
         name,
-        blob:item.blob,
+        blob:cleanBlob,
         createdAt:item.createdAt||Date.now(),
         onChunk:storeZipChunk,
         offset:zipOffset
@@ -2223,47 +2249,12 @@ async function exportGalleryZip(){
       centralEntries.push(zipEntry);
       zipOffset+=zipEntry.written;
 
-      metadata.push({
-        file:name,
-        createdAt:item.createdAt||null,
-        seed:item.seed||'',
-        presetName:item.presetName||'',
-        model:item.model||'',
-        sampler:item.sampler||'',
-        width:item.width||null,
-        height:item.height||null,
-        steps:item.steps||null,
-        cfg:item.cfg??null,
-        referenceEnabled:Boolean(item.referenceEnabled),
-        referenceMode:item.referenceMode||'',
-        referenceStrength:item.referenceStrength??null,
-        referenceFidelity:item.referenceFidelity??null,
-        referenceName:item.referenceName||'',
-        vibeEnabled:Boolean(item.vibeEnabled),
-        vibeStrength:item.vibeStrength??null,
-        vibeInformation:item.vibeInformation??null,
-        vibeName:item.vibeName||'',
-        prompt:item.assembledPrompt||item.scenePrompt||item.prompt||'',
-        negative:item.assembledNegative||item.extraNegative||item.negative||''
-      });
-
       packed++;
       const pct=Math.min(98,Math.round(((i+1)/keys.length)*98));
       setGalleryExportProgress(pct,`正在打包 ${i+1} / ${keys.length}`);
       if(i%3===0) await new Promise(r=>setTimeout(r,0));
     }
-
     setGalleryExportProgress(99,'正在整理 ZIP…');
-    const metaBytes=new TextEncoder().encode(JSON.stringify(metadata,null,2));
-    const metaEntry=await streamStoredZipEntry({
-      name:'metadata.json',
-      blob:new Blob([metaBytes],{type:'application/json'}),
-      createdAt:Date.now(),
-      onChunk:storeZipChunk,
-      offset:zipOffset
-    });
-    centralEntries.push(metaEntry);
-    zipOffset+=metaEntry.written;
 
     const centralOffset=zipOffset;
     let centralSize=0;
@@ -2395,7 +2386,7 @@ els.generateBtn.addEventListener('click',()=>generate());
 els.saveLink?.addEventListener('click',async()=>{
   if(!currentResultBlob){showToast('还没有可保存的图片');return;}
   const name=els.saveLink.dataset.filename || (currentSeed ? `nai-${currentSeed}.png` : `nai-${Date.now()}.png`);
-  try{await saveBlob(currentResultBlob,name);}
+  try{await saveImageBlob(currentResultBlob,name);}
   catch(e){console.error(e);showToast(e?.message||'原图保存失败');}
 });
 els.saveWatermarkedBtn?.addEventListener('click',async()=>{
