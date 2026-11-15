@@ -1908,6 +1908,109 @@ async function renderGallery(){
   }catch(e){console.warn(e);showToast('图库读取失败');}
 }
 
+const ZIP_CRC_TABLE=(()=>{
+  const table=new Uint32Array(256);
+  for(let n=0;n<256;n++){
+    let c=n;
+    for(let k=0;k<8;k++) c=(c&1)?(0xedb88320^(c>>>1)):(c>>>1);
+    table[n]=c>>>0;
+  }
+  return table;
+})();
+function zipCrcUpdate(crc,bytes){
+  let c=crc>>>0;
+  for(let i=0;i<bytes.length;i++) c=ZIP_CRC_TABLE[(c^bytes[i])&0xff]^(c>>>8);
+  return c>>>0;
+}
+function zipU16(value){
+  const out=new Uint8Array(2);
+  new DataView(out.buffer).setUint16(0,value&0xffff,true);
+  return out;
+}
+function zipU32(value){
+  const out=new Uint8Array(4);
+  new DataView(out.buffer).setUint32(0,value>>>0,true);
+  return out;
+}
+function zipJoin(parts){
+  let size=0;
+  for(const part of parts) size+=part.length;
+  const out=new Uint8Array(size);
+  let offset=0;
+  for(const part of parts){out.set(part,offset);offset+=part.length;}
+  return out;
+}
+function zipDosDateTime(value){
+  const d=value instanceof Date?value:new Date(value||Date.now());
+  const year=Math.max(1980,d.getFullYear());
+  const date=((year-1980)<<9)|((d.getMonth()+1)<<5)|d.getDate();
+  const time=(d.getHours()<<11)|(d.getMinutes()<<5)|Math.floor(d.getSeconds()/2);
+  return {date:date&0xffff,time:time&0xffff};
+}
+function zipLocalHeader(nameBytes,stamp){
+  return zipJoin([
+    zipU32(0x04034b50),zipU16(20),zipU16(0x0808),zipU16(0),
+    zipU16(stamp.time),zipU16(stamp.date),zipU32(0),zipU32(0),zipU32(0),
+    zipU16(nameBytes.length),zipU16(0),nameBytes
+  ]);
+}
+function zipDataDescriptor(crc,size){
+  return zipJoin([zipU32(0x08074b50),zipU32(crc),zipU32(size),zipU32(size)]);
+}
+function zipCentralHeader(entry){
+  return zipJoin([
+    zipU32(0x02014b50),zipU16(20),zipU16(20),zipU16(0x0808),zipU16(0),
+    zipU16(entry.stamp.time),zipU16(entry.stamp.date),zipU32(entry.crc),
+    zipU32(entry.size),zipU32(entry.size),zipU16(entry.nameBytes.length),
+    zipU16(0),zipU16(0),zipU16(0),zipU16(0),zipU32(0),zipU32(entry.offset),
+    entry.nameBytes
+  ]);
+}
+function zipEndOfCentralDirectory(count,centralSize,centralOffset){
+  return zipJoin([
+    zipU32(0x06054b50),zipU16(0),zipU16(0),zipU16(count),zipU16(count),
+    zipU32(centralSize),zipU32(centralOffset),zipU16(0)
+  ]);
+}
+async function streamStoredZipEntry({name,blob,createdAt,onChunk,offset}){
+  const enc=new TextEncoder();
+  const nameBytes=enc.encode(name);
+  const stamp=zipDosDateTime(createdAt);
+  const local=zipLocalHeader(nameBytes,stamp);
+  await onChunk(local);
+
+  let crc=0xffffffff;
+  let size=0;
+  if(typeof blob.stream==='function'){
+    const reader=blob.stream().getReader();
+    try{
+      while(true){
+        const part=await reader.read();
+        if(part.done) break;
+        const bytes=part.value instanceof Uint8Array?part.value:new Uint8Array(part.value);
+        if(!bytes.length) continue;
+        crc=zipCrcUpdate(crc,bytes);
+        size+=bytes.length;
+        await onChunk(bytes);
+      }
+    }finally{
+      reader.releaseLock?.();
+    }
+  }else{
+    const bytes=new Uint8Array(await blob.arrayBuffer());
+    crc=zipCrcUpdate(crc,bytes);
+    size=bytes.length;
+    await onChunk(bytes);
+  }
+  crc=(crc^0xffffffff)>>>0;
+  const descriptor=zipDataDescriptor(crc,size);
+  await onChunk(descriptor);
+  return {
+    nameBytes,stamp,crc,size,offset,
+    written:local.length+size+descriptor.length
+  };
+}
+
 async function exportGalleryZip(){
   const btn = els.exportGalleryZipBtn;
   if(!btn) return;
@@ -1975,7 +2078,6 @@ async function exportGalleryZip(){
     }
     keys.sort((a,b)=>Number(b)-Number(a));
 
-    const {Zip,ZipPassThrough,strToU8}=await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
     const readRecord=(key)=>new Promise((resolve,reject)=>{
       const tx=db.transaction('history','readonly');
       const req=tx.objectStore('history').get(key);
@@ -1986,7 +2088,7 @@ async function exportGalleryZip(){
     let chunkIndex=0;
     let totalBytes=0;
     let writeChain=Promise.resolve();
-    const storeZipChunk=(data)=>{
+    const storeZipChunk=async(data)=>{
       if(!data?.length) return;
       const index=chunkIndex++;
       totalBytes+=data.length;
@@ -2005,25 +2107,11 @@ async function exportGalleryZip(){
         tx.onerror=()=>reject(tx.error);
         tx.onabort=()=>reject(tx.error||new Error('ZIP 临时块写入失败'));
       }));
+      await writeChain;
     };
 
-    let zipSettled=false;
-    let resolveZip;
-    let rejectZip;
-    const zipDone=new Promise((resolve,reject)=>{resolveZip=resolve;rejectZip=reject;});
-    const zip=new Zip((err,data,final)=>{
-      if(zipSettled) return;
-      if(err){
-        zipSettled=true;
-        rejectZip(err);
-        return;
-      }
-      storeZipChunk(data);
-      if(final){
-        zipSettled=true;
-        writeChain.then(resolveZip,rejectZip);
-      }
-    });
+    const centralEntries=[];
+    let zipOffset=0;
 
     const used=new Map();
     const metadata=[];
@@ -2043,28 +2131,15 @@ async function exportGalleryZip(){
       used.set(base,duplicateCount+1);
       const name=`${base}${duplicateCount?`_${duplicateCount+1}`:''}.png`;
 
-      const entry=new ZipPassThrough(name);
-      zip.add(entry);
-      if(typeof item.blob.stream==='function'){
-        const reader=item.blob.stream().getReader();
-        try{
-          while(true){
-            const part=await reader.read();
-            if(part.done) break;
-            if(part.value?.length){
-              entry.push(part.value,false);
-              await writeChain;
-            }
-          }
-          entry.push(new Uint8Array(0),true);
-          await writeChain;
-        }finally{
-          reader.releaseLock?.();
-        }
-      }else{
-        entry.push(new Uint8Array(await item.blob.arrayBuffer()),true);
-        await writeChain;
-      }
+      const zipEntry=await streamStoredZipEntry({
+        name,
+        blob:item.blob,
+        createdAt:item.createdAt||Date.now(),
+        onChunk:storeZipChunk,
+        offset:zipOffset
+      });
+      centralEntries.push(zipEntry);
+      zipOffset+=zipEntry.written;
 
       metadata.push({
         file:name,
@@ -2095,11 +2170,30 @@ async function exportGalleryZip(){
       if(i%3===0) await new Promise(r=>setTimeout(r,0));
     }
 
-    const metaEntry=new ZipPassThrough('metadata.json');
-    zip.add(metaEntry);
-    metaEntry.push(strToU8(JSON.stringify(metadata,null,2)),true);
-    zip.end();
-    await zipDone;
+    const metaBytes=new TextEncoder().encode(JSON.stringify(metadata,null,2));
+    const metaEntry=await streamStoredZipEntry({
+      name:'metadata.json',
+      blob:new Blob([metaBytes],{type:'application/json'}),
+      createdAt:Date.now(),
+      onChunk:storeZipChunk,
+      offset:zipOffset
+    });
+    centralEntries.push(metaEntry);
+    zipOffset+=metaEntry.written;
+
+    const centralOffset=zipOffset;
+    let centralSize=0;
+    for(const entry of centralEntries){
+      const header=zipCentralHeader(entry);
+      centralSize+=header.length;
+      zipOffset+=header.length;
+      await storeZipChunk(header);
+    }
+    const eocd=zipEndOfCentralDirectory(centralEntries.length,centralSize,centralOffset);
+    zipOffset+=eocd.length;
+    await storeZipChunk(eocd);
+    await writeChain;
+
     await writeJob({status:'done',chunkCount:chunkIndex,totalBytes,packed,finishedAt:Date.now()});
 
     db.close();
