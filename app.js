@@ -498,15 +498,15 @@ function assemblePrompts(includeSelectedAnchors = true) {
   // Preserve each saved anchor's internal appearance order rather than guessing tag semantics.
   const subjectTags = subjectTagsFromAnchors(orderedAnchors);
   const appearanceParts = orderedAnchorAppearance(orderedAnchors);
-  const styledPreset = applyQualityTags(presetPrompt);
-  const sceneVisualExpanded = expandCharacterPlaceholders(scene.visual);
+  const presetWithoutPlaceholders = stripCharacterPlaceholders(presetPrompt);
+  const styledPreset = applyQualityTags(presetWithoutPlaceholders);
   const sceneVisualWithoutPlaceholders = stripCharacterPlaceholders(scene.visual);
 
   const positiveVisual = cleanJoin([
     ...subjectTags,
     ...appearanceParts,
     styledPreset,
-    sceneVisualExpanded
+    sceneVisualWithoutPlaceholders
   ]);
   const positive = scene.text
     ? `${positiveVisual}${positiveVisual ? '\n' : ''}Text: ${scene.text}`
