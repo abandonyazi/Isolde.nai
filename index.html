@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=36" />
+  <link rel="stylesheet" href="./app.css?v=37" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -95,7 +95,10 @@
         <div class="field">
           <div class="field-head scene-prompt-head">
             <span>画面词</span>
-            <button id="insertAnchorPromptsBtn" class="text-btn compact scene-insert-btn" type="button">插入角色词</button>
+            <div class="scene-insert-wrap">
+              <button id="insertAnchorPromptsBtn" class="text-btn compact scene-insert-btn" type="button">插入角色词</button>
+              <div id="insertAnchorMenu" class="scene-insert-menu hidden"></div>
+            </div>
           </div>
           <textarea id="scenePrompt" rows="8" placeholder="只写这张图的构图、动作、表情、服装、背景……；可写 [角色名] 自动注入已保存的角色锚点词"></textarea>
         </div>
@@ -557,6 +560,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=66"></script>
+  <script type="module" src="./app.js?v=67"></script>
 </body>
 </html>
