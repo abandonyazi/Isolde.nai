@@ -100,6 +100,12 @@ async function exportResponse(url){
   return new Response(stream,{status:200,headers});
 }
 
+self.addEventListener('message',(event)=>{
+  if(event.data?.type==='ISOLDE_ZIP_PING'){
+    event.ports?.[0]?.postMessage({ok:true,feature:'isolde-zip-stream-v1'});
+  }
+});
+
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).catch(() => {}));
   self.skipWaiting();
