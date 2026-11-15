@@ -8,7 +8,11 @@
     (() => {
       try {
         const key = 'isolde_nai_theme_v1';
-        const systemTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const isStandalone = window.matchMedia?.('(display-mode: standalone)').matches || window.navigator.standalone === true;
+        const hour = new Date().getHours();
+        const timedTheme = hour >= 19 || hour < 7 ? 'dark' : 'light';
+        const mediaTheme = window.matchMedia?.('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+        const automaticTheme = isStandalone ? timedTheme : mediaTheme;
         let saved = null;
         const raw = localStorage.getItem(key);
         if (raw) {
@@ -20,12 +24,16 @@
             }
           } catch {
             if (raw === 'dark' || raw === 'light') {
-              saved = { theme: raw, systemAtOverride: systemTheme };
+              saved = { theme: raw, systemAtOverride: automaticTheme };
               localStorage.setItem(key, JSON.stringify(saved));
             }
           }
         }
-        const theme = saved?.theme || systemTheme;
+        if (saved && saved.systemAtOverride !== automaticTheme) {
+          saved = null;
+          localStorage.removeItem(key);
+        }
+        const theme = saved?.theme || automaticTheme;
         document.documentElement.dataset.theme = theme;
         document.documentElement.style.colorScheme = theme;
         document.getElementById('themeColorMeta')?.setAttribute('content', theme === 'dark' ? '#111a23' : '#f3f7fb');
@@ -45,7 +53,7 @@
   <main class="app-shell">
     <header class="topbar">
       <div id="miniStatus" class="mini-status">未连接</div>
-      <button id="themeToggle" class="icon-btn theme-toggle" type="button" aria-label="切换夜间模式" title="临时切换主题，系统下次切换后恢复跟随">☾</button>
+      <button id="themeToggle" class="icon-btn theme-toggle" type="button" aria-label="切换夜间模式" title="临时切换主题，下次自动切换后恢复跟随">☾</button>
     </header>
 
     <nav class="tabbar" aria-label="主导航">
@@ -552,6 +560,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=60"></script>
+  <script type="module" src="./app.js?v=61"></script>
 </body>
 </html>
