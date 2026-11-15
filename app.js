@@ -1870,7 +1870,12 @@ async function exportGalleryZip(){
   btn.disabled = true;
   btn.textContent = '正在打包…';
   let db = null;
+  let root = null;
+  let tempName = '';
+  let writable = null;
   try{
+    if(!navigator.storage?.getDirectory) throw new Error('当前浏览器不支持大图库单 ZIP 导出');
+
     db = await openDb();
     const keys = await new Promise((resolve,reject)=>{
       const tx = db.transaction('history','readonly');
@@ -1891,64 +1896,44 @@ async function exportGalleryZip(){
 
     const pad = (n) => String(n).padStart(2,'0');
     const safe = (s) => String(s || '').replace(/[\\/:*?"<>|]+/g,'-').replace(/\s+/g,'_').slice(0,60);
-    const used = new Map();
-    const PART_LIMIT = 20 * 1024 * 1024;
     const now = new Date();
     const day = `${now.getFullYear()}-${pad(now.getMonth()+1)}-${pad(now.getDate())}`;
+    tempName = `isolde-nai-gallery-${day}.zip`;
+
+    root = await navigator.storage.getDirectory();
+    try{ await root.removeEntry(tempName); }catch{}
+    const handle = await root.getFileHandle(tempName,{create:true});
+    writable = await handle.createWritable();
+
+    let writeChain = Promise.resolve();
+    let zipSettled = false;
+    let resolveZip;
+    let rejectZip;
+    const zipDone = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
+    const zip = new Zip((err,data,final)=>{
+      if(zipSettled) return;
+      if(err){
+        zipSettled = true;
+        rejectZip(err);
+        return;
+      }
+      if(data?.length){
+        const chunk = data.slice();
+        writeChain = writeChain.then(()=>writable.write(chunk));
+      }
+      if(final){
+        zipSettled = true;
+        writeChain.then(resolveZip,rejectZip);
+      }
+    });
+
+    const used = new Map();
+    const metadata = [];
     let packed = 0;
-    let partNo = 0;
-    let current = null;
-
-    const newPart = ()=>{
-      const chunks = [];
-      let settled = false;
-      let resolveZip;
-      let rejectZip;
-      const done = new Promise((resolve,reject)=>{ resolveZip=resolve; rejectZip=reject; });
-      const zip = new Zip((err,data,final)=>{
-        if(settled) return;
-        if(err){
-          settled = true;
-          rejectZip(err);
-          return;
-        }
-        if(data?.length) chunks.push(data);
-        if(final){
-          settled = true;
-          resolveZip(new Blob(chunks,{type:'application/zip'}));
-        }
-      });
-      return {zip,chunks,done,metadata:[],rawBytes:0,count:0};
-    };
-
-    const finishPart = async ()=>{
-      if(!current || !current.count) return;
-      const metaEntry = new ZipPassThrough('metadata.json');
-      current.zip.add(metaEntry);
-      metaEntry.push(strToU8(JSON.stringify(current.metadata,null,2)),true);
-      current.zip.end();
-
-      const blob = await current.done;
-      partNo++;
-      const filename = `isolde-nai-gallery-${day}-part-${String(partNo).padStart(2,'0')}.zip`;
-      fallbackDownload(blob,filename);
-
-      current.chunks.length = 0;
-      current.metadata.length = 0;
-      current = null;
-      await new Promise(r => setTimeout(r,350));
-    };
 
     for(let i=0;i<keys.length;i++){
       const item = await readRecord(keys[i]);
       if(!item?.blob) continue;
-
-      const itemSize = Number(item.blob.size || 0);
-      if(current?.count && current.rawBytes + itemSize > PART_LIMIT){
-        btn.textContent = `正在保存第 ${partNo+1} 卷…`;
-        await finishPart();
-      }
-      if(!current) current = newPart();
 
       const d = new Date(item.createdAt || Date.now());
       const stamp = `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}_${pad(d.getHours())}-${pad(d.getMinutes())}-${pad(d.getSeconds())}`;
@@ -1960,7 +1945,7 @@ async function exportGalleryZip(){
       const name = `${base}${count ? `_${count+1}` : ''}.png`;
 
       const entry = new ZipPassThrough(name);
-      current.zip.add(entry);
+      zip.add(entry);
       if(typeof item.blob.stream === 'function'){
         const reader = item.blob.stream().getReader();
         try{
@@ -1977,9 +1962,9 @@ async function exportGalleryZip(){
         entry.push(new Uint8Array(await item.blob.arrayBuffer()),true);
       }
 
-      current.rawBytes += itemSize;
-      current.count++;
-      current.metadata.push({
+      await writeChain;
+
+      metadata.push({
         file: name,
         createdAt: item.createdAt || null,
         seed: item.seed || '',
@@ -2008,15 +1993,38 @@ async function exportGalleryZip(){
       if(i % 3 === 0) await new Promise(r => setTimeout(r,0));
     }
 
-    await finishPart();
+    const metaEntry = new ZipPassThrough('metadata.json');
+    zip.add(metaEntry);
+    metaEntry.push(strToU8(JSON.stringify(metadata,null,2)),true);
+    zip.end();
+    await zipDone;
+    await writable.close();
+    writable = null;
+
     db.close();
     db = null;
-    showToast(`已打包 ${packed} 张图片，共 ${partNo} 个 ZIP`);
+
+    const file = await handle.getFile();
+    btn.textContent = '正在保存…';
+
+    const shareData = {files:[file]};
+    if(navigator.share && (!navigator.canShare || navigator.canShare(shareData))){
+      await navigator.share(shareData);
+    }else{
+      fallbackDownload(file,tempName);
+    }
+
+    showToast(`已打包 ${packed} 张图片`);
+    setTimeout(()=>root?.removeEntry(tempName).catch(()=>{}),120000);
+    root = null;
+    tempName = '';
   }catch(e){
     console.error(e);
-    showToast((e?.message || String(e)).slice(0,180));
+    if(e?.name !== 'AbortError') showToast((e?.message || String(e)).slice(0,180));
   }finally{
+    if(writable){ try{ await writable.abort(); }catch{} }
     if(db) db.close();
+    if(root && tempName){ try{ await root.removeEntry(tempName); }catch{} }
     btn.disabled = false;
     btn.textContent = originalLabel;
   }
