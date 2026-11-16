@@ -27,7 +27,7 @@ const els = {
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
-  apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
+  apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), keepNaiMetadata: $('keepNaiMetadata'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
   vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibePresetSelect: $('vibePresetSelect'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
@@ -322,6 +322,7 @@ function loadState() {
   els.extraNegative.value = settings.extraNegative || '';
   els.watermarkOpacity.value = String(Number.isFinite(Number(settings.watermarkOpacity)) ? Math.max(0,Math.min(100,Number(settings.watermarkOpacity))) : 100);
   els.watermarkOpacityValue.textContent = `${els.watermarkOpacity.value}%`;
+  if (els.keepNaiMetadata) els.keepNaiMetadata.checked = settings.keepNaiMetadata === true;
   els.referenceEnabled.checked = settings.referenceEnabled === true;
   els.referenceMode.value = ['character','style','character&style'].includes(settings.referenceMode) ? settings.referenceMode : 'character';
   els.referenceStrength.value = String(clampNumber(settings.referenceStrength,0,1,.75));
@@ -357,6 +358,7 @@ function saveSettings() {
     scenePrompt: els.scenePrompt.value,
     extraNegative: els.extraNegative.value,
     watermarkOpacity: Number(els.watermarkOpacity.value),
+    keepNaiMetadata: els.keepNaiMetadata?.checked === true,
     referenceEnabled: els.referenceEnabled.checked,
     referenceMode: els.referenceMode.value,
     referenceStrength: Number(els.referenceStrength.value),
@@ -1116,8 +1118,8 @@ async function stripPngMetadata(blob){
   return new Blob(parts,{type:'image/png'});
 }
 async function saveImageBlob(blob,name){
-  const clean=await stripPngMetadata(blob);
-  return saveBlob(clean,name);
+  const output=els.keepNaiMetadata?.checked ? blob : await stripPngMetadata(blob);
+  return saveBlob(output,name);
 }
 function fallbackDownload(blob,name){
   const url=URL.createObjectURL(blob);
@@ -2626,6 +2628,10 @@ els.watermarkOpacity?.addEventListener('input',()=>{
   els.watermarkOpacityValue.textContent=`${els.watermarkOpacity.value}%`;
 });
 els.watermarkOpacity?.addEventListener('change',saveSettings);
+els.keepNaiMetadata?.addEventListener('change',()=>{
+  saveSettings();
+  showToast(els.keepNaiMetadata.checked ? '保存图片时将保留 NAI 元数据' : '保存图片时将移除 NAI 元数据');
+});
 
 window.addEventListener('message',async(event)=>{
   const data=event.data;
