@@ -43,9 +43,10 @@ The same repository can also be installed directly as a SillyTavern third-party 
 
 The extension adds a small floating Isolde.nai orb beside the chat. Tap it to choose:
 
-- **Smart**: every N character replies, judge whether the current scene is visually worth drawing.
-- **Fixed**: every N character replies, always draw.
-- **Images per trigger**: 1–12 scene points. The director can place them after different paragraphs.
+- **Smart**: check each new character reply and place an inline candidate only when the current scene is worth drawing.
+- **Fixed**: use the same human-triggered candidate flow, but fill the configured candidate quota by the end of each round cycle.
+- **Rounds / images**: for example, 5 rounds + 2 images means up to 2 candidate points may appear during that 5-reply cycle. The user still decides whether to tap **生成**.
+- **Image size**: Smart mode lets the user choose NovelAI's Small / Normal / Large / Wallpaper tier, then the director chooses portrait / square / landscape for each scene. Wallpaper supports portrait or landscape only. Fixed mode exposes all 11 concrete NovelAI presets directly.
 - **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, download metadata settings, and connection settings.
 
 Automatic scene selection is immersive but human-triggered: the director checks each new character reply and, when a scene is worth illustrating, immediately inserts a small inline candidate card into the relevant paragraph of that same reply. NovelAI is called only when the user taps **生成**. The round count is only a quota window for how many candidate image points may appear.
