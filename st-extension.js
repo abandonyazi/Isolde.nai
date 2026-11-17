@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleImagesUsed: 0 };
+const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0 };
 
 let roundCounter = 0;
 let running = false;
@@ -35,13 +35,17 @@ function settings() {
     extension_settings[EXTENSION_KEY] = { ...DEFAULTS };
   }
   const value = extension_settings[EXTENSION_KEY];
+  if (value.cycleSlotsUsed === undefined && value.cycleSlotsUsed !== undefined) {
+    value.cycleSlotsUsed = value.cycleSlotsUsed;
+  }
   for (const [key, fallback] of Object.entries(DEFAULTS)) {
     if (value[key] === undefined) value[key] = fallback;
   }
+  delete value.cycleSlotsUsed;
   value.interval = clampInt(value.interval, 1, 999, DEFAULTS.interval);
   value.count = clampInt(value.count, 1, 12, DEFAULTS.count);
   value.contextMessages = clampInt(value.contextMessages, 4, 40, DEFAULTS.contextMessages);
-  value.cycleImagesUsed = clampInt(value.cycleImagesUsed, 0, value.count, 0);
+  value.cycleSlotsUsed = clampInt(value.cycleSlotsUsed, 0, value.count, 0);
   if (!['smart', 'fixed'].includes(value.mode)) value.mode = DEFAULTS.mode;
   value.enabled = Boolean(value.enabled);
   return value;
@@ -83,7 +87,7 @@ function renderControls() {
   const progress = popover.querySelector('[data-isolde-progress]');
   if (progress) {
     progress.textContent = s.enabled
-      ? '当前周期：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮 · 已出 ' + s.cycleImagesUsed + ' / ' + s.count + ' 张'
+      ? '当前周期：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮 · 候选 ' + s.cycleSlotsUsed + ' / ' + s.count
       : '酒馆配图已关闭';
   }
 }
@@ -156,7 +160,7 @@ function createUi() {
   if (modeControl) modeControl.addEventListener('change', (event) => {
     settings().mode = event.target.value;
     roundCounter = 0;
-    settings().cycleImagesUsed = 0;
+    settings().cycleSlotsUsed = 0;
     save();
   });
 
@@ -164,14 +168,14 @@ function createUi() {
   if (intervalControl) intervalControl.addEventListener('change', (event) => {
     settings().interval = clampInt(event.target.value, 1, 999, DEFAULTS.interval);
     roundCounter = 0;
-    settings().cycleImagesUsed = 0;
+    settings().cycleSlotsUsed = 0;
     save();
   });
 
   const countControl = popover.querySelector('[data-isolde-count]');
   if (countControl) countControl.addEventListener('change', (event) => {
     settings().count = clampInt(event.target.value, 1, 12, DEFAULTS.count);
-    settings().cycleImagesUsed = 0;
+    settings().cycleSlotsUsed = 0;
     save();
   });
 
@@ -752,7 +756,7 @@ function createPendingPlaceholder(messageId, item) {
 
   const text = document.createElement('div');
   text.className = 'isolde-placeholder-text';
-  text.innerHTML = '<strong>这里可以出图</strong><span>点生成才会请求 NAI</span>';
+  text.innerHTML = '<strong>这里适合配图</strong><span>你决定要不要画 · 点生成才会请求 NAI</span>';
 
   const actions = document.createElement('div');
   actions.className = 'isolde-placeholder-actions';
@@ -1167,7 +1171,7 @@ async function runIllustration(messageId, force = false) {
   if (running) return 0;
 
   const s = settings();
-  const remaining = Math.max(0, s.count - s.cycleImagesUsed);
+  const remaining = Math.max(0, s.count - s.cycleSlotsUsed);
   if (!remaining) return 0;
 
   running = true;
@@ -1179,33 +1183,23 @@ async function runIllustration(messageId, force = false) {
       return 0;
     }
 
-    setState('generating', '正在为当前剧情配图…');
-    const response = await bridgeRequest('generate', {
-      scenePlans: plan.scenes.map((scene) => ({
-        prompt: scene.prompt,
-        characters: cleanSceneCharacters(scene.characters),
-      })),
-    });
-    const results = response && Array.isArray(response.results) ? response.results : [];
-    if (!results.length) throw new Error('没有收到图片');
+    const added = await addPendingScenes(Number(messageId), plan.scenes.slice(0, remaining));
+    if (!added.length) return 0;
 
-    await attachResults(results, Number(messageId), plan.scenes);
-    const created = Math.min(results.length, remaining);
-    s.cycleImagesUsed = clampInt(s.cycleImagesUsed + created, 0, s.count, s.count);
+    s.cycleSlotsUsed = clampInt(s.cycleSlotsUsed + added.length, 0, s.count, s.count);
     save();
-    setState('success', '当前剧情已插入 ' + created + ' 张图');
-    setTimeout(() => setState('idle', '待机'), 1800);
-    return created;
+    setState('success', '已标记 ' + added.length + ' 个生图候选');
+    setTimeout(() => setState('idle', '待机'), 1400);
+    return added.length;
   } catch (error) {
     console.error('[Isolde.nai]', error);
-    setState('error', (error && error.message) || '自动配图失败');
-    toast((error && error.message) || '自动配图失败，请打开完整工作台检查设置。', 'error');
+    setState('error', (error && error.message) || '场景判断失败');
+    toast((error && error.message) || '场景判断失败，请打开完整工作台检查设置。', 'error');
     return 0;
   } finally {
     running = false;
   }
 }
-
 async function onCharacterRendered(messageId, source) {
   queueDecorate(messageId);
   const s = settings();
@@ -1223,23 +1217,22 @@ async function onCharacterRendered(messageId, source) {
   roundCounter += 1;
   renderControls();
 
-  if (s.cycleImagesUsed < s.count) {
+  if (s.cycleSlotsUsed < s.count) {
     const forceNow = s.mode === 'fixed' && roundCounter >= s.interval;
     await runIllustration(Number(messageId), forceNow);
   }
 
   if (roundCounter >= s.interval) {
     roundCounter = 0;
-    settings().cycleImagesUsed = 0;
+    settings().cycleSlotsUsed = 0;
     save();
   } else {
     renderControls();
   }
 }
-
 function resetForChat() {
   roundCounter = 0;
-  settings().cycleImagesUsed = 0;
+  settings().cycleSlotsUsed = 0;
   lastMessageKey = '';
   renderControls();
   setState('idle', '待机');
