@@ -970,7 +970,7 @@ function resolveAutomaticCharacters(value) {
     return {name:String(character.name||anchorName||'').trim(),anchor:saved?saved.name:'',prompt};
   }).filter(Boolean);
 }
-function buildNaiPayload(seed=null,promptOverride=null) {
+function buildNaiPayload(seed=null,promptOverride=null,sizeOverride=null) {
   const source=promptOverride&&typeof promptOverride==='object'?promptOverride:assemblePrompts();
   const positive=String(source.basePositive ?? source.positive ?? '');
   const negative=String(source.negative||'');
@@ -980,8 +980,10 @@ function buildNaiPayload(seed=null,promptOverride=null) {
   const charCaptions=supportsCharacterPrompts(model)
     ? characters.map((character)=>({char_caption:normalizeCharacterCaption(character.prompt),centers:[{x:0.5,y:0.5}]}))
     : [];
-  const width=Math.round(clampNumber(els.width.value,256,2048,1024)/64)*64;
-  const height=Math.round(clampNumber(els.height.value,256,2048,1024)/64)*64;
+  const widthSource=sizeOverride&&Number.isFinite(Number(sizeOverride.width))?sizeOverride.width:els.width.value;
+  const heightSource=sizeOverride&&Number.isFinite(Number(sizeOverride.height))?sizeOverride.height:els.height.value;
+  const width=Math.round(clampNumber(widthSource,256,2048,1024)/64)*64;
+  const height=Math.round(clampNumber(heightSource,256,2048,1024)/64)*64;
   const params={
     params_version:isV5?4:3,
     width,height,scale:clampNumber(els.cfg.value,0,20,5),
@@ -1031,7 +1033,7 @@ function parseOpenAiImage(text) {
   for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
   return new Blob([bytes],{type:'image/png'});
 }
-async function generate({forceSeed=null,throwOnError=false,promptOverride=null}={}) {
+async function generate({forceSeed=null,throwOnError=false,promptOverride=null,sizeOverride=null}={}) {
   if(busy){if(throwOnError)throw new Error('上一张图片还在生成');return;}
   rehydrateConnectionFields();
   const key=els.apiKey.value.trim() || loadSavedToken();
@@ -1043,7 +1045,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
   let endpoint; try{endpoint=normalizedEndpoint(els.apiFormat.value,els.endpoint.value);}catch(e){showToast(e.message);if(throwOnError)throw e;return;}
   const seed = forceSeed !== null ? String(forceSeed).trim() : els.seed.value.trim();
   currentSeed = seed;
-  const naiBody=buildNaiPayload(seed || null,promptOverride);
+  const naiBody=buildNaiPayload(seed || null,promptOverride,sizeOverride);
   busy=true; els.generateBtn.disabled=true; els.generateLabel.textContent='生成中'; els.generateSpinner.classList.remove('hidden'); setConnectionState('ready','正在生成…');
   try{
     await applyReferenceFeatures(naiBody,endpoint,key);
@@ -1064,7 +1066,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
       seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
-      model:els.model.value,sampler:els.sampler.value,width:Number(els.width.value),height:Number(els.height.value),
+      model:els.model.value,sampler:els.sampler.value,width:naiBody.parameters.width,height:naiBody.parameters.height,
       steps:Number(els.steps.value),cfg:Number(els.cfg.value),
       referenceEnabled:els.referenceEnabled.checked,referenceMode:els.referenceMode.value,referenceStrength:Number(els.referenceStrength.value),referenceFidelity:Number(els.referenceFidelity.value),referenceName:currentReferenceAsset?.name||'',
       vibeEnabled:els.vibeEnabled.checked,vibeStrength:Number(els.vibeStrength.value),vibeInformation:Number(els.vibeInformation.value),vibeName:currentVibeAsset?.name||'',
@@ -1073,7 +1075,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null}=
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
     return {
       blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,
-      width:Number(els.width.value),height:Number(els.height.value),galleryId,
+      width:naiBody.parameters.width,height:naiBody.parameters.height,galleryId,
       characters:resolveAutomaticCharacters(promptSource.characters)
     };
   }catch(e){
@@ -2678,10 +2680,13 @@ window.addEventListener('message',async(event)=>{
     ? data.scenePlans.map((item)=>({
         prompt:String((item&&item.prompt)||'').trim(),
         characters:Array.isArray(item&&item.characters)?item.characters:[],
+        width:Number(item&&item.width)||undefined,
+        height:Number(item&&item.height)||undefined,
       })).filter((item)=>item.prompt)
     : (Array.isArray(data.scenes)?data.scenes.map((value)=>({prompt:String(value||'').trim(),characters:[]})).filter((item)=>item.prompt):[]);
   const seeds=Array.isArray(data.seeds)?data.seeds:[];
   const promptOverrides=Array.isArray(data.promptOverrides)?data.promptOverrides:[];
+  const sizeOverrides=Array.isArray(data.sizeOverrides)?data.sizeOverrides:[];
   if(!scenePlans.length){
     event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:'没有收到画面词'},event.origin);
     return;
@@ -2698,7 +2703,17 @@ window.addEventListener('message',async(event)=>{
       const seed=requestedSeed||String(Math.floor(Math.random()*4294967295));
       const override=promptOverrides[i]&&String(promptOverrides[i].positive||'').trim()?promptOverrides[i]:null;
       const automaticPrompt={...(override||assemblePrompts(false)),characters:scenePlan.characters};
-      const result=await generate({forceSeed:seed,throwOnError:true,promptOverride:automaticPrompt});
+      const externalSize=sizeOverrides[i]&&typeof sizeOverrides[i]==='object'?sizeOverrides[i]:null;
+      const sizeOverride={
+        width:Number(scenePlan.width)||Number(externalSize?.width)||undefined,
+        height:Number(scenePlan.height)||Number(externalSize?.height)||undefined,
+      };
+      const result=await generate({
+        forceSeed:seed,
+        throwOnError:true,
+        promptOverride:automaticPrompt,
+        sizeOverride:sizeOverride.width&&sizeOverride.height?sizeOverride:null,
+      });
       if(!result?.blob)throw new Error('图片生成没有返回结果');
       results.push({...result,scenePrompt:scene,characters:result.characters||resolveAutomaticCharacters(scenePlan.characters)});
     }
