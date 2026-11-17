@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.21';
+const EXTENSION_ASSET_VERSION = '0.9.22';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -228,7 +228,8 @@ function installOrbDragging() {
     const now = performance.now();
     if (now - lastActivationAt < 350) return;
     lastActivationAt = now;
-    openQuickSettingsUi();
+    if (popover?.classList.contains('open')) closeQuickSettingsUi();
+    else openQuickSettingsUi();
   };
 
   orb.addEventListener('pointerdown', (event) => {
@@ -488,7 +489,10 @@ function createUi() {
   popover.innerHTML = [
     '<div class="isolde-head">',
       '<div><strong>Isolde.nai</strong><div class="isolde-status" data-isolde-status>待机</div></div>',
-      '<span class="isolde-status" data-isolde-progress></span>',
+      '<div style="display:flex;align-items:center;gap:8px">',
+        '<span class="isolde-status" data-isolde-progress></span>',
+        '<button type="button" data-isolde-close-popover aria-label="关闭" style="width:30px;height:30px;border:0;border-radius:999px;background:rgba(120,150,175,.14);color:inherit;font-size:20px;line-height:1;display:grid;place-items:center;padding:0">×</button>',
+      '</div>',
     '</div>',
     '<div class="isolde-toggle"><span>启用酒馆配图</span><input data-isolde-enabled type="checkbox" aria-label="启用酒馆配图"></div>',
     '<div class="isolde-grid">',
@@ -563,6 +567,9 @@ function createUi() {
     save();
   });
 
+  const closePopoverControl = popover.querySelector('[data-isolde-close-popover]');
+  if (closePopoverControl) closePopoverControl.addEventListener('click', closeQuickSettingsUi);
+
   const workbenchControl = popover.querySelector('[data-isolde-workbench]');
   if (workbenchControl) workbenchControl.addEventListener('click', openWorkbenchUi);
 
@@ -573,8 +580,8 @@ function createUi() {
     if (!popover.classList.contains('open')) return;
     const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
     if (path.includes(popover) || path.includes(orb)) return;
-    popover.classList.remove('open');
-  });
+    closeQuickSettingsUi();
+  }, true);
 
   globalThis.IsoldeNaiOpenWorkbench = openWorkbenchUi;
   globalThis.IsoldeNaiCloseWorkbench = closeWorkbenchUi;
