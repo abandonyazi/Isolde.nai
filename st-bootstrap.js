@@ -15,6 +15,23 @@ function closeFallbackWorkbench() {
   if (panel) panel.style.display = 'none';
 }
 
+function sizeFallbackWorkbench() {
+  const panel = document.getElementById(FALLBACK_ID);
+  if (!panel || panel.style.display === 'none') return;
+
+  const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
+  const viewportWidth = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
+  if (viewportHeight) panel.style.height = viewportHeight + 'px';
+  if (viewportWidth) panel.style.width = viewportWidth + 'px';
+
+  const bar = panel.querySelector('[data-isolde-bootstrap-bar]');
+  const iframe = panel.querySelector('iframe');
+  if (!bar || !iframe || !viewportHeight) return;
+
+  const barHeight = Math.ceil(bar.getBoundingClientRect().height || 64);
+  iframe.style.height = Math.max(120, viewportHeight - barHeight) + 'px';
+}
+
 function ensureFallbackWorkbench() {
   let panel = document.getElementById(FALLBACK_ID);
   if (panel) return panel;
@@ -24,14 +41,21 @@ function ensureFallbackWorkbench() {
   panel.setAttribute('aria-label', 'Isolde.nai 工作台');
   Object.assign(panel.style, {
     position: 'fixed',
-    inset: '0',
+    top: '0',
+    left: '0',
+    right: '0',
+    bottom: 'auto',
+    width: '100vw',
+    height: '100vh',
     zIndex: '32000',
     display: 'none',
-    flexDirection: 'column',
-    background: 'rgba(9, 14, 22, .96)',
+    overflow: 'hidden',
+    background: 'rgb(9, 14, 22)',
+    boxSizing: 'border-box',
   });
 
   const bar = document.createElement('div');
+  bar.dataset.isoldeBootstrapBar = '1';
   Object.assign(bar.style, {
     minHeight: '48px',
     padding: '8px 12px',
@@ -42,6 +66,7 @@ function ensureFallbackWorkbench() {
     background: 'rgba(20, 28, 40, .96)',
     color: '#fff',
     borderBottom: '1px solid rgba(255,255,255,.12)',
+    boxSizing: 'border-box',
   });
 
   const title = document.createElement('strong');
@@ -63,9 +88,10 @@ function ensureFallbackWorkbench() {
   iframe.title = 'Isolde.nai 工作台';
   iframe.src = WORKBENCH_URL;
   Object.assign(iframe.style, {
-    flex: '1 1 auto',
+    display: 'block',
     width: '100%',
-    minHeight: '0',
+    height: 'calc(100vh - 64px)',
+    minHeight: '120px',
     border: '0',
     background: '#fff',
   });
@@ -73,6 +99,14 @@ function ensureFallbackWorkbench() {
   bar.append(title, close);
   panel.append(bar, iframe);
   document.body.appendChild(panel);
+
+  if (!globalThis.__isoldeNaiFallbackViewportBound) {
+    globalThis.__isoldeNaiFallbackViewportBound = true;
+    window.addEventListener('resize', sizeFallbackWorkbench, { passive: true });
+    window.visualViewport?.addEventListener('resize', sizeFallbackWorkbench, { passive: true });
+    window.visualViewport?.addEventListener('scroll', sizeFallbackWorkbench, { passive: true });
+  }
+
   return panel;
 }
 
@@ -86,7 +120,10 @@ function openWorkbench() {
   }
 
   const panel = ensureFallbackWorkbench();
-  panel.style.display = 'flex';
+  panel.style.display = 'block';
+  sizeFallbackWorkbench();
+  requestAnimationFrame(sizeFallbackWorkbench);
+  window.setTimeout(sizeFallbackWorkbench, 120);
 }
 
 function ensureWandEntry() {
