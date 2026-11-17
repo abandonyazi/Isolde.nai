@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0 };
+const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0, smartSize: 'normal', fixedSize: '832x1216' };
 
 let roundCounter = 0;
 let running = false;
@@ -28,6 +28,65 @@ const pendingBridge = new Map();
 function clampInt(value, min, max, fallback) {
   const number = Math.trunc(Number(value));
   return Number.isFinite(number) ? Math.min(max, Math.max(min, number)) : fallback;
+}
+
+const SIZE_PRESETS = {
+  small: {
+    portrait: [512, 768],
+    square: [640, 640],
+    landscape: [768, 512],
+  },
+  normal: {
+    portrait: [832, 1216],
+    square: [1024, 1024],
+    landscape: [1216, 832],
+  },
+  large: {
+    portrait: [1024, 1536],
+    square: [1472, 1472],
+    landscape: [1536, 1024],
+  },
+  wallpaper: {
+    portrait: [1088, 1920],
+    landscape: [1920, 1088],
+  },
+};
+
+const SMART_SIZE_OPTIONS = [
+  ['small', 'Small · 小图'],
+  ['normal', 'Normal · 中图'],
+  ['large', 'Large · 大图'],
+  ['wallpaper', 'Wallpaper · 壁纸'],
+];
+
+const FIXED_SIZE_GROUPS = [
+  ['Small', [['512x768','竖图 · 512 × 768'],['640x640','方图 · 640 × 640'],['768x512','横图 · 768 × 512']]],
+  ['Normal', [['832x1216','竖图 · 832 × 1216'],['1024x1024','方图 · 1024 × 1024'],['1216x832','横图 · 1216 × 832']]],
+  ['Large', [['1024x1536','竖图 · 1024 × 1536'],['1472x1472','方图 · 1472 × 1472'],['1536x1024','横图 · 1536 × 1024']]],
+  ['Wallpaper', [['1088x1920','竖图 · 1088 × 1920'],['1920x1088','横图 · 1920 × 1088']]],
+];
+
+function sizeTierLabel(value) {
+  return ({ small:'Small', normal:'Normal', large:'Large', wallpaper:'Wallpaper' })[value] || 'Normal';
+}
+
+function orientationLabel(value) {
+  return ({ portrait:'竖图', square:'方图', landscape:'横图' })[value] || '竖图';
+}
+
+function resolveSmartSize(tier, orientation) {
+  const group = SIZE_PRESETS[tier] || SIZE_PRESETS.normal;
+  const safeOrientation = group[orientation] ? orientation : (orientation === 'square' ? 'portrait' : 'portrait');
+  const pair = group[safeOrientation] || group.portrait || Object.values(group)[0];
+  return { width: pair[0], height: pair[1], orientation: safeOrientation, tier };
+}
+
+function resolveFixedSize(value) {
+  const match = String(value || '').match(/^(\d+)x(\d+)$/);
+  const width = match ? Number(match[1]) : 832;
+  const height = match ? Number(match[2]) : 1216;
+  const orientation = width === height ? 'square' : (width > height ? 'landscape' : 'portrait');
+  return { width, height, orientation, tier: '' };
 }
 
 function settings() {
@@ -47,6 +106,8 @@ function settings() {
   value.contextMessages = clampInt(value.contextMessages, 4, 40, DEFAULTS.contextMessages);
   value.cycleSlotsUsed = clampInt(value.cycleSlotsUsed, 0, value.count, 0);
   if (!['smart', 'fixed'].includes(value.mode)) value.mode = DEFAULTS.mode;
+  if (!SIZE_PRESETS[value.smartSize]) value.smartSize = DEFAULTS.smartSize;
+  if (!/^\d+x\d+$/.test(String(value.fixedSize || ''))) value.fixedSize = DEFAULTS.fixedSize;
   value.enabled = Boolean(value.enabled);
   return value;
 }
@@ -75,10 +136,22 @@ function renderControls() {
   const mode = popover.querySelector('[data-isolde-mode]');
   const interval = popover.querySelector('[data-isolde-interval]');
   const count = popover.querySelector('[data-isolde-count]');
+  const size = popover.querySelector('[data-isolde-size]');
   if (enabled) enabled.checked = s.enabled;
   if (mode) mode.value = s.mode;
   if (interval) interval.value = String(s.interval);
   if (count) count.value = String(s.count);
+  if (size) {
+    if (s.mode === 'smart') {
+      size.innerHTML = SMART_SIZE_OPTIONS.map(([value, label]) => '<option value="' + value + '">' + label + '</option>').join('');
+      size.value = s.smartSize;
+    } else {
+      size.innerHTML = FIXED_SIZE_GROUPS.map(([group, options]) =>
+        '<optgroup label="' + group + '">' + options.map(([value, label]) => '<option value="' + value + '">' + label + '</option>').join('') + '</optgroup>'
+      ).join('');
+      size.value = s.fixedSize;
+    }
+  }
   popover.querySelectorAll('[data-isolde-auto-field]').forEach((el) => {
     el.disabled = !s.enabled;
   });
@@ -118,6 +191,7 @@ function createUi() {
     '<div class="isolde-grid">',
       '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option></select></label>',
       '<label>张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
+      '<label style="grid-column:1 / -1">画幅<select data-isolde-size aria-label="画幅"></select></label>',
       '<label style="grid-column:1 / -1">轮次<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
     '<div class="isolde-actions">',
@@ -176,6 +250,14 @@ function createUi() {
   if (countControl) countControl.addEventListener('change', (event) => {
     settings().count = clampInt(event.target.value, 1, 12, DEFAULTS.count);
     settings().cycleSlotsUsed = 0;
+    save();
+  });
+
+  const sizeControl = popover.querySelector('[data-isolde-size]');
+  if (sizeControl) sizeControl.addEventListener('change', (event) => {
+    const s = settings();
+    if (s.mode === 'smart') s.smartSize = event.target.value;
+    else s.fixedSize = event.target.value;
     save();
   });
 
@@ -399,10 +481,13 @@ function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}
     'When generate=true, return between 1 and ' + maxScenes + ' scene objects, never more. Prefer one strong image over redundant alternate shots. Images must belong to the current latest reply only.',
     '',
     'Return JSON only with this exact structure:',
-    '{"generate":true,"reason":"short reason","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"character-specific NovelAI tags"}]}]}',
+    '{"generate":true,"reason":"short reason","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"orientation":"portrait","characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"character-specific NovelAI tags"}]}]}',
     '',
     'Rules:',
     '- after_paragraph is 1-based and must point to the paragraph whose scene the image depicts.',
+    s.mode === 'smart'
+      ? '- Choose orientation for each scene from portrait, square, landscape. The user fixed the size tier to ' + sizeTierLabel(s.smartSize) + '. ' + (s.smartSize === 'wallpaper' ? 'Wallpaper supports portrait or landscape only; never choose square.' : 'Choose whichever orientation best fits the composition.')
+      : '- The user fixed the exact image size. orientation may be omitted or ignored.',
     '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
     '- prompt is the Base Prompt only: global character counts, environment, composition, camera, lighting, atmosphere, and shared relations.',
@@ -462,7 +547,9 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
     }
     const prompt = String((scene && (scene.prompt || scene.scene)) || '').trim();
     const afterParagraph = clampInt(scene && (scene.after_paragraph ?? scene.afterParagraph), 1, Math.max(1, paragraphCount), paragraphCount);
-    return { prompt, afterParagraph, characters: cleanSceneCharacters(scene && scene.characters) };
+    const orientationRaw = String((scene && scene.orientation) || '').trim().toLowerCase();
+    const orientation = ['portrait','square','landscape'].includes(orientationRaw) ? orientationRaw : 'portrait';
+    return { prompt, afterParagraph, orientation, characters: cleanSceneCharacters(scene && scene.characters) };
   }).filter((scene) => scene.prompt);
 
   if (generate && !scenes.length && data && typeof data.prompt === 'string') {
@@ -658,12 +745,20 @@ async function addPendingScenes(messageId, scenes) {
   scenes.forEach((scene, index) => {
     const afterParagraph = clampInt(scene.afterParagraph, 1, Math.max(1, paragraphs.length), paragraphs.length || 1);
     const anchorText = String(paragraphs[afterParagraph - 1] || '').replace(/\s+/g, ' ').trim().slice(0, 120);
+    const s = settings();
+    const resolvedSize = s.mode === 'smart'
+      ? resolveSmartSize(s.smartSize, scene.orientation)
+      : resolveFixedSize(s.fixedSize);
     const pending = {
       id: 'isolde-pending-' + stamp + '-' + index + '-' + Math.random().toString(36).slice(2, 7),
       prompt: String(scene.prompt || '').trim(),
       characters: cleanSceneCharacters(scene.characters),
       afterParagraph,
       anchorText,
+      width: resolvedSize.width,
+      height: resolvedSize.height,
+      orientation: resolvedSize.orientation,
+      sizeTier: s.mode === 'smart' ? s.smartSize : '',
     };
     if (pending.prompt) {
       message.extra.isolde_pending_scenes.push(pending);
@@ -711,7 +806,12 @@ async function generatePendingScene(messageId, pendingId, ...buttons) {
 
   try {
     const response = await bridgeRequest('generate', {
-      scenePlans: [{ prompt: item.prompt, characters: cleanSceneCharacters(item.characters) }],
+      scenePlans: [{
+        prompt: item.prompt,
+        characters: cleanSceneCharacters(item.characters),
+        width: Number(item.width) || undefined,
+        height: Number(item.height) || undefined,
+      }],
     });
     const result = response && Array.isArray(response.results) ? response.results[0] : null;
     if (!result || !(result.blob instanceof Blob)) throw new Error('没有收到图片');
@@ -720,6 +820,8 @@ async function generatePendingScene(messageId, pendingId, ...buttons) {
       prompt: item.prompt,
       characters: cleanSceneCharacters(item.characters),
       afterParagraph: item.afterParagraph,
+      width: Number(item.width) || undefined,
+      height: Number(item.height) || undefined,
     }]);
 
     const current = pendingScenesFor(message);
@@ -756,7 +858,10 @@ function createPendingPlaceholder(messageId, item) {
 
   const text = document.createElement('div');
   text.className = 'isolde-placeholder-text';
-  text.innerHTML = '<strong>这里适合配图</strong><span>你决定要不要画 · 点生成才会请求 NAI</span>';
+  const sizeText = item.width && item.height
+    ? orientationLabel(item.orientation) + ' · ' + item.width + ' × ' + item.height
+    : '';
+  text.innerHTML = '<strong>这里适合配图</strong><span>' + (sizeText ? sizeText + ' · ' : '') + '你决定要不要画</span>';
 
   const actions = document.createElement('div');
   actions.className = 'isolde-placeholder-actions';
@@ -1123,6 +1228,10 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
         positive: String(media.isolde_prompt || ''),
         negative: String(media.isolde_negative || ''),
       }] : [],
+      sizeOverrides: [{
+        width: Number(media.width) || undefined,
+        height: Number(media.height) || undefined,
+      }],
     });
     const result = response && Array.isArray(response.results) ? response.results[0] : null;
     if (!result || !(result.blob instanceof Blob)) throw new Error('重绘没有返回图片');
