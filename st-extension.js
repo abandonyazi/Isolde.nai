@@ -116,6 +116,7 @@ function createUi() {
       '<label style="grid-column:1 / -1">每隔多少轮<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
     '<div class="isolde-actions">',
+      '<button class="isolde-btn" data-isolde-draw type="button">画这一幕</button>',
       '<button class="isolde-btn primary" data-isolde-workbench type="button">打开 Isolde.nai</button>',
     '</div>',
   ].join('');
@@ -169,6 +170,17 @@ function createUi() {
   if (countControl) countControl.addEventListener('change', (event) => {
     settings().count = clampInt(event.target.value, 1, 12, DEFAULTS.count);
     save();
+  });
+
+  const drawControl = popover.querySelector('[data-isolde-draw]');
+  if (drawControl) drawControl.addEventListener('click', () => {
+    const messageId = latestDrawableMessageId();
+    if (messageId < 0) {
+      toast('当前没有可配图的角色回复。', 'warning');
+      return;
+    }
+    popover.classList.remove('open');
+    void runIllustration(messageId, true);
   });
 
   const workbenchControl = popover.querySelector('[data-isolde-workbench]');
@@ -837,7 +849,12 @@ function createMediaTools(messageId, mediaIndex, media) {
   const download = document.createElement('button');
   download.type = 'button';
   download.textContent = '下载';
-  download.title = '保存 PNG';
+  download.title = '按网页「下载设置」保存 PNG';
+
+  const watermarked = document.createElement('button');
+  watermarked.type = 'button';
+  watermarked.textContent = '水印版';
+  watermarked.title = '使用网页设置中的水印保存';
 
   const remove = document.createElement('button');
   remove.type = 'button';
@@ -860,16 +877,22 @@ function createMediaTools(messageId, mediaIndex, media) {
   download.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void downloadIsoldeMedia(media, download);
+    void downloadIsoldeMedia(media, download, false);
+  });
+
+  watermarked.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    void downloadIsoldeMedia(media, watermarked, true);
   });
 
   remove.addEventListener('click', (event) => {
     event.preventDefault();
     event.stopPropagation();
-    void deleteIsoldeMedia(messageId, mediaIndex, reroll, sameSeed, download, remove);
+    void deleteIsoldeMedia(messageId, mediaIndex, reroll, sameSeed, download, watermarked, remove);
   });
 
-  tools.append(reroll, sameSeed, download, remove);
+  tools.append(reroll, sameSeed, download, watermarked, remove);
   return tools;
 }
 
@@ -968,16 +991,19 @@ function fallbackBlobDownload(blob, fileName) {
   setTimeout(() => URL.revokeObjectURL(url), 60000);
 }
 
-async function downloadIsoldeMedia(media, button) {
+async function downloadIsoldeMedia(media, button, watermarked = false) {
   if (!media || !media.url) return;
   if (button) button.disabled = true;
   try {
     const response = await fetch(media.url, { cache: 'no-store' });
     if (!response.ok) throw new Error('图片读取失败');
     const original = await response.blob();
-    const blob = original.type === 'image/png' ? original : new Blob([original], { type: 'image/png' });
+    const sourceBlob = original.type === 'image/png' ? original : new Blob([original], { type: 'image/png' });
+    const prepared = await bridgeRequest('prepareDownload', { blob: sourceBlob, watermarked }, 60000);
+    const blob = prepared?.blob instanceof Blob ? prepared.blob : sourceBlob;
     const seed = String(media.isolde_seed || '').trim();
-    const fileName = 'isolde-' + (seed || Date.now()) + '.png';
+    const suffix = watermarked ? '-watermarked' : '';
+    const fileName = 'isolde-' + (seed || Date.now()) + suffix + '.png';
 
     if (isIOSLike() && navigator.share && typeof File !== 'undefined') {
       const file = new File([blob], fileName, { type: 'image/png' });
@@ -996,7 +1022,7 @@ async function downloadIsoldeMedia(media, button) {
     fallbackBlobDownload(blob, fileName);
   } catch (error) {
     console.error('[Isolde.nai] download failed', error);
-    toast((error && error.message) || '下载失败', 'error');
+    toast((error && error.message) || (watermarked ? '水印版下载失败' : '下载失败'), 'error');
   } finally {
     if (button) button.disabled = false;
   }
