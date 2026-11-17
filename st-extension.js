@@ -189,16 +189,6 @@ function createUi() {
   renderControls();
 }
 
-function latestDrawableMessageId() {
-  const context = getContext();
-  const chat = (context && context.chat) || [];
-  for (let i = chat.length - 1; i >= 0; i--) {
-    const message = chat[i];
-    if (message && !message.is_user && !message.is_system) return i;
-  }
-  return chat.length ? chat.length - 1 : -1;
-}
-
 function conversationFor(messageId) {
   const context = getContext();
   const chat = (context && context.chat) || [];
@@ -1186,8 +1176,6 @@ async function runIllustration(messageId, force = false) {
   }
 
   running = true;
-  const drawButton = popover && popover.querySelector('[data-isolde-draw]');
-  if (drawButton) drawButton.disabled = true;
 
   try {
     const plan = await planScenes(messageId, force);
@@ -1206,7 +1194,6 @@ async function runIllustration(messageId, force = false) {
     toast((error && error.message) || '生成失败，请打开完整工作台检查设置。', 'error');
   } finally {
     running = false;
-    if (drawButton) drawButton.disabled = false;
   }
 }
 
