@@ -175,23 +175,6 @@ function ensureSettingsEntry() {
   section.appendChild(drawer);
   root.prepend(section);
 
-  // SillyTavern normally wires inline drawers globally. This fallback keeps
-  // the dynamically injected drawer usable on builds/themes that do not.
-  header.addEventListener('click', () => {
-    if (body.style.display === 'none') {
-      body.style.display = '';
-      chevron.classList.remove('fa-circle-chevron-down');
-      chevron.classList.add('fa-circle-chevron-up');
-    } else if (getComputedStyle(body).display !== 'none') {
-      body.style.display = 'none';
-      chevron.classList.remove('fa-circle-chevron-up');
-      chevron.classList.add('fa-circle-chevron-down');
-    } else {
-      body.style.display = '';
-      chevron.classList.remove('fa-circle-chevron-down');
-      chevron.classList.add('fa-circle-chevron-up');
-    }
-  });
 
   return true;
 }
