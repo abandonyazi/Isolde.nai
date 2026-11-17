@@ -15,6 +15,7 @@ Allowed browser origins include:
 - localhost / loopback
 - private-LAN IPv4 origins
 - .local and .ts.net hosts
+- temporary SillyTavern Cloudflare Tunnel origins under `*.trycloudflare.com`
 
 This covers the hosted web app plus common self-hosted SillyTavern setups without turning the Worker into an unrestricted public CORS proxy.
 
