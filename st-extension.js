@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.20';
+const EXTENSION_ASSET_VERSION = '0.9.21';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -113,13 +113,49 @@ function closeWorkbenchUi() {
   if (workbench) workbench.classList.remove('open');
 }
 
+function positionQuickSettingsUi() {
+  if (!popover || !orb) return;
+  const rect = orb.getBoundingClientRect();
+  const gap = 10;
+  const width = Math.min(320, Math.max(240, window.innerWidth - 26));
+  const viewportH = window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0;
+  const viewportW = window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0;
+
+  let left = Math.min(Math.max(13, rect.right - width), Math.max(13, viewportW - width - 13));
+  let top = rect.bottom + gap;
+
+  popover.style.setProperty('width', width + 'px', 'important');
+  popover.style.setProperty('left', left + 'px', 'important');
+  popover.style.setProperty('right', 'auto', 'important');
+  popover.style.setProperty('bottom', 'auto', 'important');
+
+  // Measure after width is applied; if it would run off the bottom, place it above the orb.
+  const estimatedH = Math.max(popover.scrollHeight || 0, 250);
+  if (top + estimatedH > viewportH - 12) {
+    top = Math.max(12, rect.top - estimatedH - gap);
+  }
+  popover.style.setProperty('top', top + 'px', 'important');
+}
+
 function openQuickSettingsUi() {
   if (!popover) return;
+  renderControls();
+  positionQuickSettingsUi();
   popover.classList.add('open');
+  popover.style.setProperty('display', 'block', 'important');
+  popover.style.setProperty('opacity', '1', 'important');
+  popover.style.setProperty('visibility', 'visible', 'important');
+  popover.style.setProperty('pointer-events', 'auto', 'important');
+  popover.style.setProperty('transform', 'none', 'important');
 }
 
 function closeQuickSettingsUi() {
-  if (popover) popover.classList.remove('open');
+  if (!popover) return;
+  popover.classList.remove('open');
+  popover.style.setProperty('display', 'none', 'important');
+  popover.style.setProperty('opacity', '0', 'important');
+  popover.style.setProperty('visibility', 'hidden', 'important');
+  popover.style.setProperty('pointer-events', 'none', 'important');
 }
 
 function loadOrbPosition() {
@@ -179,6 +215,8 @@ function installOrbDragging() {
   let grabDX = 0;
   let grabDY = 0;
   let moved = 0;
+  let lastActivationAt = 0;
+  let pointerSequenceActive = false;
 
   const currentLeft = () => {
     if (orbPosition.dock === 'right') return window.innerWidth - ORB_SIZE;
@@ -186,33 +224,43 @@ function installOrbDragging() {
     return orbPosition.x;
   };
 
+  const activate = () => {
+    const now = performance.now();
+    if (now - lastActivationAt < 350) return;
+    lastActivationAt = now;
+    openQuickSettingsUi();
+  };
+
   orb.addEventListener('pointerdown', (event) => {
     pointerId = event.pointerId;
+    pointerSequenceActive = true;
     dragging = true;
     moved = 0;
     startX = event.clientX;
     startY = event.clientY;
     grabDX = event.clientX - currentLeft();
     grabDY = event.clientY - orbPosition.y;
-    orb.setPointerCapture?.(event.pointerId);
+    try { orb.setPointerCapture?.(event.pointerId); } catch {}
   });
 
   orb.addEventListener('pointermove', (event) => {
     if (!dragging || event.pointerId !== pointerId) return;
     moved = Math.max(moved, Math.abs(event.clientX - startX) + Math.abs(event.clientY - startY));
+    if (moved < ORB_CLICK_SLOP) return;
     orbPosition.dock = 'none';
     orbPosition.x = event.clientX - grabDX;
     orbPosition.y = event.clientY - grabDY;
     applyOrbPosition();
   });
 
-  const finish = (event) => {
+  const finishPointer = (event) => {
     if (!dragging || event.pointerId !== pointerId) return;
     dragging = false;
     pointerId = null;
+    pointerSequenceActive = false;
 
     if (moved < ORB_CLICK_SLOP) {
-      openQuickSettingsUi();
+      activate();
       return;
     }
 
@@ -226,18 +274,39 @@ function installOrbDragging() {
     saveOrbPosition();
   };
 
-  orb.addEventListener('pointerup', finish);
-  orb.addEventListener('pointercancel', finish);
+  orb.addEventListener('pointerup', finishPointer);
+  orb.addEventListener('pointercancel', (event) => {
+    if (event.pointerId === pointerId) {
+      dragging = false;
+      pointerId = null;
+      pointerSequenceActive = false;
+    }
+  });
+
+  // iOS/WebView fallbacks. They are de-duplicated by activate().
+  orb.addEventListener('touchend', () => {
+    if (!dragging && !pointerSequenceActive && moved < ORB_CLICK_SLOP) activate();
+  }, { passive: true });
+
+  orb.addEventListener('click', () => {
+    if (!dragging && moved < ORB_CLICK_SLOP) activate();
+  });
+
   orb.addEventListener('keydown', (event) => {
     if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      openQuickSettingsUi();
+      activate();
     }
   });
 
   window.addEventListener('resize', () => {
     applyOrbPosition();
     saveOrbPosition();
+    if (popover?.classList.contains('open')) positionQuickSettingsUi();
+  }, { passive: true });
+
+  window.visualViewport?.addEventListener('resize', () => {
+    if (popover?.classList.contains('open')) positionQuickSettingsUi();
   }, { passive: true });
 
   applyOrbPosition();
@@ -415,6 +484,7 @@ function createUi() {
   popover = document.createElement('section');
   popover.id = 'isolde-nai-popover';
   popover.setAttribute('aria-label', 'Isolde.nai 自动绘图');
+  popover.style.setProperty('display', 'none', 'important');
   popover.innerHTML = [
     '<div class="isolde-head">',
       '<div><strong>Isolde.nai</strong><div class="isolde-status" data-isolde-status>待机</div></div>',
