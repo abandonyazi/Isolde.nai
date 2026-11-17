@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.17';
+const EXTENSION_ASSET_VERSION = '0.9.18';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -148,6 +148,7 @@ function installOrbDragging() {
   let grabDX = 0;
   let grabDY = 0;
   let moved = 0;
+  let suppressClick = false;
 
   const currentLeft = () => {
     if (orbPosition.dock === 'right') return window.innerWidth - ORB_SIZE;
@@ -180,11 +181,9 @@ function installOrbDragging() {
     dragging = false;
     pointerId = null;
 
-    if (moved < ORB_CLICK_SLOP) {
-      popover?.classList.toggle('open');
-      return;
-    }
+    if (moved < ORB_CLICK_SLOP) return;
 
+    suppressClick = true;
     const leftGap = orbPosition.x;
     const rightGap = window.innerWidth - (orbPosition.x + ORB_SIZE);
     if (leftGap <= ORB_SNAP_ZONE) orbPosition.dock = 'left';
@@ -197,6 +196,15 @@ function installOrbDragging() {
 
   orb.addEventListener('pointerup', finish);
   orb.addEventListener('pointercancel', finish);
+  orb.addEventListener('click', (event) => {
+    if (suppressClick) {
+      suppressClick = false;
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    popover?.classList.toggle('open');
+  });
 
   window.addEventListener('resize', () => {
     applyOrbPosition();
@@ -371,7 +379,7 @@ function createUi() {
   orbImage.className = 'isolde-orb-image';
   orbImage.alt = '';
   orbImage.setAttribute('aria-hidden', 'true');
-  orbImage.src = new URL('./assets/isolde-orb.svg', import.meta.url).href;
+  orbImage.src = new URL('./assets/isolde-orb.svg?ver=' + EXTENSION_ASSET_VERSION, import.meta.url).href;
   orb.appendChild(orbImage);
 
   popover = document.createElement('section');
