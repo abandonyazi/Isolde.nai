@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12 };
+const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleImagesUsed: 0 };
 
 let roundCounter = 0;
 let running = false;
@@ -41,6 +41,7 @@ function settings() {
   value.interval = clampInt(value.interval, 1, 999, DEFAULTS.interval);
   value.count = clampInt(value.count, 1, 12, DEFAULTS.count);
   value.contextMessages = clampInt(value.contextMessages, 4, 40, DEFAULTS.contextMessages);
+  value.cycleImagesUsed = clampInt(value.cycleImagesUsed, 0, value.count, 0);
   if (!['smart', 'fixed'].includes(value.mode)) value.mode = DEFAULTS.mode;
   value.enabled = Boolean(value.enabled);
   return value;
@@ -82,7 +83,7 @@ function renderControls() {
   const progress = popover.querySelector('[data-isolde-progress]');
   if (progress) {
     progress.textContent = s.enabled
-      ? '当前周期：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮 · ' + s.count + ' 张'
+      ? '当前周期：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮 · 已出 ' + s.cycleImagesUsed + ' / ' + s.count + ' 张'
       : '酒馆配图已关闭';
   }
 }
@@ -155,6 +156,7 @@ function createUi() {
   if (modeControl) modeControl.addEventListener('change', (event) => {
     settings().mode = event.target.value;
     roundCounter = 0;
+    settings().cycleImagesUsed = 0;
     save();
   });
 
@@ -162,12 +164,14 @@ function createUi() {
   if (intervalControl) intervalControl.addEventListener('change', (event) => {
     settings().interval = clampInt(event.target.value, 1, 999, DEFAULTS.interval);
     roundCounter = 0;
+    settings().cycleImagesUsed = 0;
     save();
   });
 
   const countControl = popover.querySelector('[data-isolde-count]');
   if (countControl) countControl.addEventListener('change', (event) => {
     settings().count = clampInt(event.target.value, 1, 12, DEFAULTS.count);
+    settings().cycleImagesUsed = 0;
     save();
   });
 
@@ -371,24 +375,24 @@ function cleanSceneCharacters(value) {
   }).filter((character) => character && (character.anchor || character.prompt));
 }
 
-function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}) {
+function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}, maxScenes = 1) {
   const s = settings();
   const conversation = conversationFor(messageId);
   const paragraphs = latestParagraphs(messageId);
   const numbered = paragraphs.map((paragraph, index) => 'P' + (index + 1) + ': ' + paragraph).join('\n\n');
   const triggerRule = force
     ? 'This trigger is mandatory. generate must be true.'
-    : 'Only set generate=true when this reply contains at least one visually distinct moment worth illustrating. Pure small talk or a reply with no meaningful visual change may be skipped.';
+    : 'Judge only the current latest reply. Set generate=true only when this reply itself contains a visually distinct moment worth illustrating now. Pure small talk or a reply with no meaningful visual change should be skipped.';
   const anchorLibrary = formatAnchorLibrary(anchorEntries);
   const charCard = String(sourceContext.charCard || '').trim() || '(unavailable)';
   const persona = String(sourceContext.persona || '').trim() || '(unavailable)';
   const worldInfo = String(sourceContext.worldInfo || '').trim() || '(none activated)';
   return [
-    'You are the visual director for an ongoing roleplay. Read the latest reply as numbered paragraphs and choose where images belong inside that reply.',
+    'You are the visual director for an ongoing roleplay. This is an immersive live illustration pass. Read the current latest reply as numbered paragraphs and choose whether an image should appear inside this reply right now.',
     '',
     triggerRule,
     '',
-    'When generate=true, return exactly ' + s.count + ' scene objects. If the reply contains several distinct visual moments, distribute the images across those moments. If fewer moments exist than the requested image count, use alternate shots of the strongest moments.',
+    'When generate=true, return between 1 and ' + maxScenes + ' scene objects, never more. Prefer one strong image over redundant alternate shots. Images must belong to the current latest reply only.',
     '',
     'Return JSON only with this exact structure:',
     '{"generate":true,"reason":"short reason","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"character-specific NovelAI tags"}]}]}',
@@ -461,22 +465,12 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
     scenes = [{ prompt: data.prompt.trim(), afterParagraph: paragraphCount, characters: cleanSceneCharacters(data.characters) }];
   }
 
-  if (generate && scenes.length) {
-    const base = scenes[scenes.length - 1];
-    while (scenes.length < count) {
-      scenes.push({
-        prompt: base.prompt + ', alternate camera angle, different composition',
-        afterParagraph: base.afterParagraph,
-        characters: Array.isArray(base.characters) ? base.characters.map((character) => ({ ...character })) : [],
-      });
-    }
-    scenes = scenes.slice(0, count);
-  }
+  if (generate && scenes.length) scenes = scenes.slice(0, Math.max(1, count));
 
   return { generate: generate && scenes.length > 0, reason: String((data && data.reason) || ''), scenes };
 }
 
-async function planScenes(messageId, force) {
+async function planScenes(messageId, force, maxScenes = 1) {
   setState('judging', force ? '正在整理这一幕…' : '正在判断这一幕…');
   let anchorEntries = [];
   try {
@@ -493,9 +487,9 @@ async function planScenes(messageId, force) {
     worldInfo,
   };
   const raw = await generateQuietPrompt({
-    quietPrompt: directorPrompt(messageId, force, anchorEntries, sourceContext),
+    quietPrompt: directorPrompt(messageId, force, anchorEntries, sourceContext, maxScenes),
   });
-  return parseDirectorReply(raw, settings().count, force, latestParagraphs(messageId).length);
+  return parseDirectorReply(raw, maxScenes, force, latestParagraphs(messageId).length);
 }
 
 function bridgeRequest(type, payload = {}, timeout = 600000) {
@@ -1170,28 +1164,43 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
 }
 
 async function runIllustration(messageId, force = false) {
-  if (running) {
-    toast('上一批图片还在生成。', 'warning');
-    return;
-  }
+  if (running) return 0;
+
+  const s = settings();
+  const remaining = Math.max(0, s.count - s.cycleImagesUsed);
+  if (!remaining) return 0;
 
   running = true;
 
   try {
-    const plan = await planScenes(messageId, force);
+    const plan = await planScenes(messageId, force, remaining);
     if (!plan.generate) {
       setState('idle', plan.reason ? '这轮跳过 · ' + plan.reason : '这轮不需要出图');
-      return;
+      return 0;
     }
 
-    const pending = await addPendingScenes(messageId, plan.scenes);
-    setState('success', '已标记 ' + pending.length + ' 个生图点');
-    toast('找到 ' + pending.length + ' 个生图点，点框里的「生成」才会请求 NAI。');
-    setTimeout(() => setState('idle', '待机'), 2200);
+    setState('generating', '正在为当前剧情配图…');
+    const response = await bridgeRequest('generate', {
+      scenePlans: plan.scenes.map((scene) => ({
+        prompt: scene.prompt,
+        characters: cleanSceneCharacters(scene.characters),
+      })),
+    });
+    const results = response && Array.isArray(response.results) ? response.results : [];
+    if (!results.length) throw new Error('没有收到图片');
+
+    await attachResults(results, Number(messageId), plan.scenes);
+    const created = Math.min(results.length, remaining);
+    s.cycleImagesUsed = clampInt(s.cycleImagesUsed + created, 0, s.count, s.count);
+    save();
+    setState('success', '当前剧情已插入 ' + created + ' 张图');
+    setTimeout(() => setState('idle', '待机'), 1800);
+    return created;
   } catch (error) {
     console.error('[Isolde.nai]', error);
-    setState('error', (error && error.message) || '生成失败');
-    toast((error && error.message) || '生成失败，请打开完整工作台检查设置。', 'error');
+    setState('error', (error && error.message) || '自动配图失败');
+    toast((error && error.message) || '自动配图失败，请打开完整工作台检查设置。', 'error');
+    return 0;
   } finally {
     running = false;
   }
@@ -1213,15 +1222,24 @@ async function onCharacterRendered(messageId, source) {
 
   roundCounter += 1;
   renderControls();
-  if (roundCounter < s.interval) return;
 
-  roundCounter = 0;
-  renderControls();
-  await runIllustration(Number(messageId), s.mode === 'fixed');
+  if (s.cycleImagesUsed < s.count) {
+    const forceNow = s.mode === 'fixed' && roundCounter >= s.interval;
+    await runIllustration(Number(messageId), forceNow);
+  }
+
+  if (roundCounter >= s.interval) {
+    roundCounter = 0;
+    settings().cycleImagesUsed = 0;
+    save();
+  } else {
+    renderControls();
+  }
 }
 
 function resetForChat() {
   roundCounter = 0;
+  settings().cycleImagesUsed = 0;
   lastMessageKey = '';
   renderControls();
   setState('idle', '待机');
