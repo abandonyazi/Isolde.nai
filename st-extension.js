@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.19';
+const EXTENSION_ASSET_VERSION = '0.9.20';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -75,6 +75,28 @@ function ensureUiShadowRoot() {
         border-radius:50% !important;
         pointer-events:none !important;
       }
+      #isolde-nai-popover{
+        position:fixed !important;
+        right:13px !important;
+        bottom:calc(env(safe-area-inset-bottom) + 126px) !important;
+        z-index:2147482001 !important;
+        width:min(320px,calc(100vw - 26px)) !important;
+        padding:14px !important;
+        border-radius:18px !important;
+        border:1px solid rgba(154,183,207,.35) !important;
+        background:rgba(234,242,248,.97) !important;
+        color:#263746 !important;
+        box-shadow:0 18px 45px rgba(14,34,52,.24) !important;
+        box-sizing:border-box !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        pointer-events:auto !important;
+      }
+      #isolde-nai-popover:not(.open){
+        opacity:0 !important;
+        visibility:hidden !important;
+        pointer-events:none !important;
+      }
     `;
     shadow.appendChild(style);
   }
@@ -89,6 +111,15 @@ function openWorkbenchUi() {
 
 function closeWorkbenchUi() {
   if (workbench) workbench.classList.remove('open');
+}
+
+function openQuickSettingsUi() {
+  if (!popover) return;
+  popover.classList.add('open');
+}
+
+function closeQuickSettingsUi() {
+  if (popover) popover.classList.remove('open');
 }
 
 function loadOrbPosition() {
@@ -148,7 +179,6 @@ function installOrbDragging() {
   let grabDX = 0;
   let grabDY = 0;
   let moved = 0;
-  let suppressClick = false;
 
   const currentLeft = () => {
     if (orbPosition.dock === 'right') return window.innerWidth - ORB_SIZE;
@@ -181,9 +211,11 @@ function installOrbDragging() {
     dragging = false;
     pointerId = null;
 
-    if (moved < ORB_CLICK_SLOP) return;
+    if (moved < ORB_CLICK_SLOP) {
+      openQuickSettingsUi();
+      return;
+    }
 
-    suppressClick = true;
     const leftGap = orbPosition.x;
     const rightGap = window.innerWidth - (orbPosition.x + ORB_SIZE);
     if (leftGap <= ORB_SNAP_ZONE) orbPosition.dock = 'left';
@@ -196,14 +228,11 @@ function installOrbDragging() {
 
   orb.addEventListener('pointerup', finish);
   orb.addEventListener('pointercancel', finish);
-  orb.addEventListener('click', (event) => {
-    if (suppressClick) {
-      suppressClick = false;
+  orb.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' || event.key === ' ') {
       event.preventDefault();
-      event.stopPropagation();
-      return;
+      openQuickSettingsUi();
     }
-    popover?.classList.toggle('open');
   });
 
   window.addEventListener('resize', () => {
@@ -369,9 +398,10 @@ function renderControls() {
 function createUi() {
   const uiRoot = ensureUiShadowRoot();
 
-  orb = document.createElement('button');
+  orb = document.createElement('div');
   orb.id = 'isolde-nai-orb';
-  orb.type = 'button';
+  orb.setAttribute('role', 'button');
+  orb.tabIndex = 0;
   orb.title = 'Isolde.nai';
   orb.setAttribute('aria-label', '打开 Isolde.nai');
   orb.dataset.state = 'idle';
@@ -478,6 +508,8 @@ function createUi() {
 
   globalThis.IsoldeNaiOpenWorkbench = openWorkbenchUi;
   globalThis.IsoldeNaiCloseWorkbench = closeWorkbenchUi;
+  globalThis.IsoldeNaiOpenQuickSettings = openQuickSettingsUi;
+  globalThis.IsoldeNaiCloseQuickSettings = closeQuickSettingsUi;
   renderControls();
 }
 
