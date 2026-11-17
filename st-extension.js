@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.18';
+const EXTENSION_ASSET_VERSION = '0.9.19';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -379,7 +379,7 @@ function createUi() {
   orbImage.className = 'isolde-orb-image';
   orbImage.alt = '';
   orbImage.setAttribute('aria-hidden', 'true');
-  orbImage.src = new URL('./assets/isolde-orb.svg?ver=' + EXTENSION_ASSET_VERSION, import.meta.url).href;
+  orbImage.src = new URL('./assets/isolde-orb.webp?ver=' + EXTENSION_ASSET_VERSION, import.meta.url).href;
   orb.appendChild(orbImage);
 
   popover = document.createElement('section');
