@@ -12,6 +12,38 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
+const EXTENSION_ASSET_VERSION = '0.9.16';
+const UI_HOST_ID = 'isolde-nai-ui-host';
+
+function ensureUiShadowRoot() {
+  let host = document.getElementById(UI_HOST_ID);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = UI_HOST_ID;
+    document.body.appendChild(host);
+  }
+  host.style.setProperty('display', 'contents', 'important');
+
+  const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+  if (!shadow.querySelector('link[data-isolde-ui-style]')) {
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.dataset.isoldeUiStyle = '1';
+    link.href = new URL('./st-extension.css?ver=' + EXTENSION_ASSET_VERSION, import.meta.url).href;
+    shadow.appendChild(link);
+  }
+  return shadow;
+}
+
+function openWorkbenchUi() {
+  if (!workbench) return;
+  workbench.classList.add('open');
+  if (popover) popover.classList.remove('open');
+}
+
+function closeWorkbenchUi() {
+  if (workbench) workbench.classList.remove('open');
+}
 const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0, smartSize: 'normal', fixedSize: '832x1216' };
 
 let roundCounter = 0;
@@ -166,6 +198,8 @@ function renderControls() {
 }
 
 function createUi() {
+  const uiRoot = ensureUiShadowRoot();
+
   orb = document.createElement('button');
   orb.id = 'isolde-nai-orb';
   orb.type = 'button';
@@ -220,7 +254,7 @@ function createUi() {
     if (resolveIframeLoaded) resolveIframeLoaded();
   });
 
-  document.body.append(orb, popover, workbench);
+  uiRoot.append(orb, popover, workbench);
 
   orb.addEventListener('click', () => popover.classList.toggle('open'));
 
@@ -262,20 +296,20 @@ function createUi() {
   });
 
   const workbenchControl = popover.querySelector('[data-isolde-workbench]');
-  if (workbenchControl) workbenchControl.addEventListener('click', () => {
-    workbench.classList.add('open');
-    popover.classList.remove('open');
-  });
+  if (workbenchControl) workbenchControl.addEventListener('click', openWorkbenchUi);
 
   const closeControl = workbench.querySelector('[data-isolde-close-workbench]');
-  if (closeControl) closeControl.addEventListener('click', () => workbench.classList.remove('open'));
+  if (closeControl) closeControl.addEventListener('click', closeWorkbenchUi);
 
   document.addEventListener('pointerdown', (event) => {
     if (!popover.classList.contains('open')) return;
-    if (popover.contains(event.target) || orb.contains(event.target)) return;
+    const path = typeof event.composedPath === 'function' ? event.composedPath() : [];
+    if (path.includes(popover) || path.includes(orb)) return;
     popover.classList.remove('open');
   });
 
+  globalThis.IsoldeNaiOpenWorkbench = openWorkbenchUi;
+  globalThis.IsoldeNaiCloseWorkbench = closeWorkbenchUi;
   renderControls();
 }
 
@@ -1348,17 +1382,23 @@ function resetForChat() {
   setTimeout(decorateAllIsoldeMedia, 80);
 }
 
-const onReady = globalThis.jQuery || globalThis.$;
-if (onReady) {
-  onReady(() => {
-    settings();
-    createUi();
-    eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterRendered);
-    eventSource.on(event_types.CHAT_CHANGED, resetForChat);
-    if (event_types.MESSAGE_UPDATED) eventSource.on(event_types.MESSAGE_UPDATED, (messageId) => queueDecorate(messageId));
-    if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => queueDecorate(messageId));
-    setTimeout(decorateAllIsoldeMedia, 120);
-  });
+let initialized = false;
+
+function initializeIsoldeExtension() {
+  if (initialized || !document.body) return;
+  initialized = true;
+
+  settings();
+  createUi();
+  eventSource.on(event_types.CHARACTER_MESSAGE_RENDERED, onCharacterRendered);
+  eventSource.on(event_types.CHAT_CHANGED, resetForChat);
+  if (event_types.MESSAGE_UPDATED) eventSource.on(event_types.MESSAGE_UPDATED, (messageId) => queueDecorate(messageId));
+  if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => queueDecorate(messageId));
+  setTimeout(decorateAllIsoldeMedia, 120);
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', initializeIsoldeExtension, { once: true });
 } else {
-  console.error('[Isolde.nai] SillyTavern jQuery runtime was not found.');
+  queueMicrotask(initializeIsoldeExtension);
 }
