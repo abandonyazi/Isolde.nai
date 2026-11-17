@@ -24,6 +24,7 @@ function isAllowedOrigin(origin) {
       || host.endsWith(".localhost")
       || host.endsWith(".local")
       || host.endsWith(".ts.net")
+      || host.endsWith(".trycloudflare.com")
       || isPrivateIpv4(host);
   } catch {
     return false;
