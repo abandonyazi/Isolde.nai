@@ -45,7 +45,6 @@ The extension adds a small floating Isolde.nai orb beside the chat. Tap it to ch
 
 - **Smart**: every N character replies, judge whether the current scene is visually worth drawing.
 - **Fixed**: every N character replies, always draw.
-- **Manual**: only draw when the user taps “画这一幕”.
 - **Images per trigger**: 1–12 scene points. The director can place them after different paragraphs.
 - **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, and connection settings.
 
@@ -73,4 +72,4 @@ The web workbench also supports portable configuration export/import for presets
 
 The SillyTavern extension can place each generated image directly after the paragraph whose scene it illustrates. The director stores both a paragraph number and a short text anchor so images return to the same narrative position after chat rerenders.
 
-Each Isolde.nai chat image provides **重Roll**, **同seed**, **下载**, and **删除** controls. Rerolls keep the original image and add another variant at the same scene position. On iOS, Download prefers the native file share flow so PNG files do not open in Safari's preview page.
+Each Isolde.nai chat image provides **重Roll**, **同seed**, **下载**, **水印版**, and **删除** controls. Rerolls keep the original image and add another variant at the same scene position. **下载** follows the web workbench download setting for keeping or removing NovelAI metadata, while **水印版** uses the watermark configured in the full workbench. On iOS, downloads prefer the native file share flow so PNG files do not open in Safari's preview page.
