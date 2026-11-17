@@ -2654,6 +2654,25 @@ window.addEventListener('message',async(event)=>{
     }
     return;
   }
+  if(data.type==='prepareDownload'){
+    try{
+      if(!(data.blob instanceof Blob))throw new Error('没有收到可下载的图片');
+      const output=data.watermarked
+        ? await addCustomWatermark(data.blob)
+        : (els.keepNaiMetadata?.checked ? data.blob : await stripPngMetadata(data.blob));
+      event.source?.postMessage({
+        source:'isolde-nai-web',
+        requestId:data.requestId,
+        ok:true,
+        blob:output,
+        keepNaiMetadata:els.keepNaiMetadata?.checked===true,
+        watermarked:data.watermarked===true
+      },event.origin);
+    }catch(e){
+      event.source?.postMessage({source:'isolde-nai-web',requestId:data.requestId,ok:false,error:e?.message||String(e)},event.origin);
+    }
+    return;
+  }
   if(data.type!=='generate')return;
   const scenePlans=Array.isArray(data.scenePlans)&&data.scenePlans.length
     ? data.scenePlans.map((item)=>({
