@@ -46,9 +46,9 @@ The extension adds a small floating Isolde.nai orb beside the chat. Tap it to ch
 - **Smart**: every N character replies, judge whether the current scene is visually worth drawing.
 - **Fixed**: every N character replies, always draw.
 - **Images per trigger**: 1–12 scene points. The director can place them after different paragraphs.
-- **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, and connection settings.
+- **Full workbench**: opens the complete Isolde.nai web workbench inside SillyTavern, including presets, character anchors, Reference, Vibe, seeds, gallery, watermark export, download metadata settings, and connection settings.
 
-Automatic detection is opt-in at the image level: the director inserts inline generation placeholders first. NovelAI is called only after the user taps **生成** on a placeholder, which avoids firing several image requests at once.
+Automatic illustration is immersive: the director checks each new character reply, generates worthwhile scenes immediately, and inserts each image into the relevant paragraph of that same reply. The round count acts as a quota window rather than delaying images until the end of the cycle.
 
 For scene planning, the extension can read recent chat context, the current/recent character cards, the user's persona, activated World Info, and the local Isolde.nai character-anchor library. Characters without a saved anchor can still be drawn from card/World Info/story details without being silently added to the permanent library.
 
