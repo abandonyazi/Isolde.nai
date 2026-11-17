@@ -1437,11 +1437,16 @@ async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
     return;
   }
 
-  if (!globalThis.confirm('删除这张图？\n会同时从当前楼层、SillyTavern 图片文件和 Isolde.nai 图库移除。')) return;
+  const history = Array.isArray(media.isolde_history) ? [...media.isolde_history] : [];
+  const willRestore = history.length > 0;
+  const confirmText = willRestore
+    ? '删除这张图？\n删除后会恢复上一张重 Roll 版本；当前图会从 SillyTavern 图片文件和 Isolde.nai 图库移除。'
+    : '删除这张图？\n会同时从当前楼层、SillyTavern 图片文件和 Isolde.nai 图库移除。';
+  if (!globalThis.confirm(confirmText)) return;
 
   running = true;
   buttons.forEach((button) => { if (button) button.disabled = true; });
-  setState('generating', '正在删除…');
+  setState('generating', willRestore ? '正在恢复上一张…' : '正在删除…');
 
   try {
     const oldUrl = media.url;
@@ -1449,22 +1454,30 @@ async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
     const oldSeed = media.isolde_seed || '';
     const oldScene = media.isolde_scene_prompt || media.title || '';
 
-    message.extra.media.splice(Number(mediaIndex), 1);
-
-    if (message.extra.media.length) {
-      const current = Number(message.extra.media_index);
-      if (!Number.isFinite(current) || current >= message.extra.media.length) {
-        message.extra.media_index = Math.max(0, message.extra.media.length - 1);
-      } else if (current > Number(mediaIndex)) {
-        message.extra.media_index = current - 1;
-      } else if (current === Number(mediaIndex)) {
-        message.extra.media_index = Math.min(Number(mediaIndex), message.extra.media.length - 1);
-      }
+    if (willRestore) {
+      const previous = { ...history.pop() };
+      if (history.length) previous.isolde_history = history;
+      else delete previous.isolde_history;
+      message.extra.media.splice(Number(mediaIndex), 1, previous);
+      message.extra.media_index = Number(mediaIndex);
     } else {
-      delete message.extra.media;
-      delete message.extra.media_index;
-      delete message.extra.media_display;
-      delete message.extra.inline_image;
+      message.extra.media.splice(Number(mediaIndex), 1);
+
+      if (message.extra.media.length) {
+        const current = Number(message.extra.media_index);
+        if (!Number.isFinite(current) || current >= message.extra.media.length) {
+          message.extra.media_index = Math.max(0, message.extra.media.length - 1);
+        } else if (current > Number(mediaIndex)) {
+          message.extra.media_index = current - 1;
+        } else if (current === Number(mediaIndex)) {
+          message.extra.media_index = Math.min(Number(mediaIndex), message.extra.media.length - 1);
+        }
+      } else {
+        delete message.extra.media;
+        delete message.extra.media_index;
+        delete message.extra.media_display;
+        delete message.extra.inline_image;
+      }
     }
 
     const jq = globalThis.jQuery || globalThis.$;
@@ -1490,7 +1503,7 @@ async function deleteIsoldeMedia(messageId, mediaIndex, ...buttons) {
       toast('楼层图片已删，但 Isolde.nai 本地图库删除失败。', 'warning');
     }
 
-    setState('success', '图片已删除');
+    setState('success', willRestore ? '已恢复上一张' : '图片已删除');
     setTimeout(() => setState('idle', '待机'), 1400);
   } catch (error) {
     console.error('[Isolde.nai] delete failed', error);
@@ -1552,6 +1565,10 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     const fileName = 'isolde_reroll_' + Date.now();
     const imagePath = await saveBase64AsFile(base64, 'Isolde.nai', fileName, 'png');
 
+    const history = Array.isArray(media.isolde_history) ? [...media.isolde_history] : [];
+    const previousVersion = { ...media };
+    delete previousVersion.isolde_history;
+
     const newMedia = {
       ...media,
       url: imagePath,
@@ -1564,9 +1581,10 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
       isolde_characters: cleanSceneCharacters(result.characters || media.isolde_characters),
+      isolde_history: [...history, previousVersion],
     };
-    message.extra.media.splice(Number(mediaIndex) + 1, 0, newMedia);
-    message.extra.media_index = Number(mediaIndex) + 1;
+    message.extra.media.splice(Number(mediaIndex), 1, newMedia);
+    message.extra.media_index = Number(mediaIndex);
 
     const jq = globalThis.jQuery || globalThis.$;
     const element = jq ? jq('#chat .mes[mesid="' + messageId + '"]') : null;
@@ -1576,7 +1594,7 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     }
     if (context.saveChat) await context.saveChat();
 
-    setState('success', keepSeed ? '同 seed 新增 1 张' : '重 Roll 新增 1 张');
+    setState('success', keepSeed ? '同 seed 已替换当前图' : '重 Roll 已替换当前图');
     setTimeout(() => setState('idle', '待机'), 1800);
   } catch (error) {
     console.error('[Isolde.nai] reroll failed', error);
