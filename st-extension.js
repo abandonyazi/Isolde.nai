@@ -82,7 +82,7 @@ function renderControls() {
   const progress = popover.querySelector('[data-isolde-progress]');
   if (progress) {
     progress.textContent = s.enabled
-      ? '下一次检查：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮'
+      ? '当前周期：' + Math.min(roundCounter + 1, s.interval) + ' / ' + s.interval + ' 轮 · ' + s.count + ' 张'
       : '酒馆配图已关闭';
   }
 }
@@ -112,8 +112,8 @@ function createUi() {
     '<div class="isolde-toggle"><span>启用酒馆配图</span><input data-isolde-enabled type="checkbox" aria-label="启用酒馆配图"></div>',
     '<div class="isolde-grid">',
       '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option></select></label>',
-      '<label>每次张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
-      '<label style="grid-column:1 / -1">每隔多少轮<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
+      '<label>张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
+      '<label style="grid-column:1 / -1">轮次<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
     '<div class="isolde-actions">',
       '<button class="isolde-btn primary" data-isolde-workbench type="button">打开 Isolde.nai</button>',
