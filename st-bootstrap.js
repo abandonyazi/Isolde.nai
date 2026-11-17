@@ -1,7 +1,8 @@
-const MAIN_MODULE = './st-extension.js';
-const WORKBENCH_URL = new URL('./index.html?embed=1', import.meta.url).href;
+const VERSION = '0.9.16';
+const MAIN_MODULE = './st-extension.js?ver=' + VERSION;
+const WORKBENCH_URL = new URL('./index.html?embed=1&ver=' + VERSION, import.meta.url).href;
 const WAND_ENTRY_ID = 'isolde-nai-wand-entry';
-const FALLBACK_ID = 'isolde-nai-bootstrap-workbench';
+const FALLBACK_HOST_ID = 'isolde-nai-bootstrap-host';
 const SETTINGS_ENTRY_ID = 'isolde-nai-settings-entry';
 const STATUS_ID = 'isolde-nai-bootstrap-status';
 
@@ -10,64 +11,100 @@ function closeWandMenu() {
   if (menu) menu.style.display = 'none';
 }
 
-function closeFallbackWorkbench() {
-  const panel = document.getElementById(FALLBACK_ID);
-  if (panel) panel.style.display = 'none';
-}
-
-function sizeFallbackWorkbench() {
-  const panel = document.getElementById(FALLBACK_ID);
-  if (!panel || panel.style.display === 'none') return;
-
-  const viewportHeight = Math.round(window.visualViewport?.height || window.innerHeight || document.documentElement.clientHeight || 0);
-  const viewportWidth = Math.round(window.visualViewport?.width || window.innerWidth || document.documentElement.clientWidth || 0);
-  if (viewportHeight) panel.style.height = viewportHeight + 'px';
-  if (viewportWidth) panel.style.width = viewportWidth + 'px';
-
-  const bar = panel.querySelector('[data-isolde-bootstrap-bar]');
-  const iframe = panel.querySelector('iframe');
-  if (!bar || !iframe || !viewportHeight) return;
-
-  const barHeight = Math.ceil(bar.getBoundingClientRect().height || 64);
-  iframe.style.height = Math.max(120, viewportHeight - barHeight) + 'px';
-}
-
 function ensureFallbackWorkbench() {
-  let panel = document.getElementById(FALLBACK_ID);
+  let host = document.getElementById(FALLBACK_HOST_ID);
+  if (!host) {
+    host = document.createElement('div');
+    host.id = FALLBACK_HOST_ID;
+    host.style.setProperty('display', 'contents', 'important');
+    document.body.appendChild(host);
+  }
+
+  const shadow = host.shadowRoot || host.attachShadow({ mode: 'open' });
+  let panel = shadow.getElementById('isolde-nai-bootstrap-workbench');
   if (panel) return panel;
 
+  const style = document.createElement('style');
+  style.textContent = `
+    :host{all:initial}
+    *{box-sizing:border-box}
+    #isolde-nai-bootstrap-workbench{
+      position:fixed;
+      top:0;
+      right:0;
+      bottom:0;
+      left:0;
+      width:100%;
+      height:100vh;
+      height:100dvh;
+      z-index:2147483000;
+      display:none;
+      align-items:flex-end;
+      justify-content:center;
+      background:rgba(9,14,22,.54);
+      backdrop-filter:blur(8px);
+      -webkit-backdrop-filter:blur(8px);
+      font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;
+    }
+    .isolde-fallback-window{
+      width:min(100%,860px);
+      height:94vh;
+      height:94dvh;
+      display:grid;
+      grid-template-rows:auto minmax(0,1fr);
+      overflow:hidden;
+      background:#f3f7fb;
+      border-radius:20px 20px 0 0;
+      box-shadow:0 -12px 40px rgba(0,0,0,.22);
+    }
+    .isolde-fallback-bar{
+      display:flex;
+      align-items:center;
+      justify-content:space-between;
+      gap:12px;
+      min-height:54px;
+      padding:10px 14px;
+      padding-top:max(10px,env(safe-area-inset-top));
+      background:rgba(18,35,50,.96);
+      color:#eef6fb;
+    }
+    .isolde-fallback-bar strong{font-size:16px}
+    .isolde-fallback-bar button{
+      border:1px solid rgba(255,255,255,.22);
+      border-radius:999px;
+      padding:7px 13px;
+      background:rgba(255,255,255,.10);
+      color:inherit;
+      font:inherit;
+    }
+    iframe{
+      display:block;
+      width:100%;
+      height:100%;
+      min-width:0;
+      min-height:0;
+      border:0;
+      background:#f3f7fb;
+    }
+    @media(max-width:640px){
+      .isolde-fallback-window{
+        width:100%;
+        max-width:none;
+        height:96vh;
+        height:96dvh;
+      }
+    }
+  `;
+
   panel = document.createElement('section');
-  panel.id = FALLBACK_ID;
-  panel.setAttribute('aria-label', 'Isolde.nai 工作台');
-  Object.assign(panel.style, {
-    position: 'fixed',
-    top: '0',
-    left: '0',
-    right: '0',
-    bottom: 'auto',
-    width: '100vw',
-    height: '100vh',
-    zIndex: '32000',
-    display: 'none',
-    overflow: 'hidden',
-    background: 'rgb(9, 14, 22)',
-    boxSizing: 'border-box',
-  });
+  panel.id = 'isolde-nai-bootstrap-workbench';
+  panel.setAttribute('aria-label', 'Isolde.nai 工作台兜底');
+
+  const windowEl = document.createElement('div');
+  windowEl.className = 'isolde-fallback-window';
 
   const bar = document.createElement('div');
-  bar.dataset.isoldeBootstrapBar = '1';
-  Object.assign(bar.style, {
-    minHeight: '48px',
-    padding: '8px 12px',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: '12px',
-    background: 'rgba(20, 28, 40, .96)',
-    color: '#fff',
-    borderBottom: '1px solid rgba(255,255,255,.12)',
-    boxSizing: 'border-box',
-  });
+  bar.className = 'isolde-fallback-bar';
 
   const title = document.createElement('strong');
   title.textContent = 'Isolde.nai · 酒馆版';
@@ -75,55 +112,32 @@ function ensureFallbackWorkbench() {
   const close = document.createElement('button');
   close.type = 'button';
   close.textContent = '收起';
-  Object.assign(close.style, {
-    padding: '7px 12px',
-    borderRadius: '10px',
-    border: '1px solid rgba(255,255,255,.18)',
-    background: 'rgba(255,255,255,.08)',
-    color: '#fff',
+  close.addEventListener('click', () => {
+    panel.style.display = 'none';
   });
-  close.addEventListener('click', closeFallbackWorkbench);
 
   const iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
+  iframe.loading = 'eager';
   iframe.src = WORKBENCH_URL;
-  Object.assign(iframe.style, {
-    display: 'block',
-    width: '100%',
-    height: 'calc(100vh - 64px)',
-    minHeight: '120px',
-    border: '0',
-    background: '#fff',
-  });
 
   bar.append(title, close);
-  panel.append(bar, iframe);
-  document.body.appendChild(panel);
-
-  if (!globalThis.__isoldeNaiFallbackViewportBound) {
-    globalThis.__isoldeNaiFallbackViewportBound = true;
-    window.addEventListener('resize', sizeFallbackWorkbench, { passive: true });
-    window.visualViewport?.addEventListener('resize', sizeFallbackWorkbench, { passive: true });
-    window.visualViewport?.addEventListener('scroll', sizeFallbackWorkbench, { passive: true });
-  }
-
+  windowEl.append(bar, iframe);
+  panel.appendChild(windowEl);
+  shadow.append(style, panel);
   return panel;
 }
 
 function openWorkbench() {
   closeWandMenu();
 
-  const nativeWorkbench = document.getElementById('isolde-nai-workbench');
-  if (nativeWorkbench) {
-    nativeWorkbench.classList.add('open');
+  if (typeof globalThis.IsoldeNaiOpenWorkbench === 'function') {
+    globalThis.IsoldeNaiOpenWorkbench();
     return;
   }
 
   const panel = ensureFallbackWorkbench();
-  panel.style.display = 'block';
-  sizeFallbackWorkbench();
-  requestAnimationFrame(sizeFallbackWorkbench);
-  window.setTimeout(sizeFallbackWorkbench, 120);
+  panel.style.display = 'flex';
 }
 
 function ensureWandEntry() {
@@ -133,26 +147,38 @@ function ensureWandEntry() {
 
   const container = document.createElement('div');
   container.id = 'isolde-nai-wand-container';
-  container.className = 'extension_container';
+  container.className = 'extension_container interactable';
+  container.tabIndex = 0;
 
-  const item = document.createElement('div');
+  const item = document.createElement('a');
   item.id = WAND_ENTRY_ID;
-  item.className = 'list-group-item flex-container flexGap5 interactable';
-  item.title = '打开 Isolde.nai';
+  item.className = 'list-group-item';
+  item.href = '#';
+  item.title = 'Isolde.nai';
 
-  const icon = document.createElement('div');
-  icon.className = 'fa-fw fa-solid fa-palette extensionsMenuExtensionButton';
+  const icon = document.createElement('i');
+  icon.className = 'fa-solid fa-palette';
 
   const label = document.createElement('span');
   label.textContent = 'Isolde.nai';
 
   item.append(icon, label);
-  item.addEventListener('click', openWorkbench);
+  item.addEventListener('click', (event) => {
+    event.preventDefault();
+    openWorkbench();
+  });
   container.appendChild(item);
-  menu.prepend(container);
+  menu.appendChild(container);
   return true;
 }
 
+function installWandEntry() {
+  if (ensureWandEntry()) return;
+  const timer = window.setInterval(() => {
+    if (ensureWandEntry()) window.clearInterval(timer);
+  }, 500);
+  window.setTimeout(() => window.clearInterval(timer), 30000);
+}
 
 function setBootstrapStatus(text, tone = 'normal') {
   const status = document.getElementById(STATUS_ID);
@@ -164,7 +190,6 @@ function setBootstrapStatus(text, tone = 'normal') {
 
 function ensureSettingsEntry() {
   if (document.getElementById(SETTINGS_ENTRY_ID)) return true;
-
   const root = document.getElementById('extensions_settings');
   if (!root) return false;
 
@@ -211,31 +236,15 @@ function ensureSettingsEntry() {
   drawer.append(header, body);
   section.appendChild(drawer);
   root.prepend(section);
-
-
   return true;
 }
 
 function installSettingsEntry() {
   if (ensureSettingsEntry()) return;
-
-  const observer = new MutationObserver(() => {
-    if (ensureSettingsEntry()) observer.disconnect();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  window.setTimeout(() => observer.disconnect(), 30000);
-}
-
-function installWandEntry() {
-  if (ensureWandEntry()) return;
-
-  const observer = new MutationObserver(() => {
-    if (ensureWandEntry()) observer.disconnect();
-  });
-  observer.observe(document.documentElement, { childList: true, subtree: true });
-
-  window.setTimeout(() => observer.disconnect(), 30000);
+  const timer = window.setInterval(() => {
+    if (ensureSettingsEntry()) window.clearInterval(timer);
+  }, 500);
+  window.setTimeout(() => window.clearInterval(timer), 30000);
 }
 
 installWandEntry();
@@ -243,11 +252,22 @@ installSettingsEntry();
 
 import(MAIN_MODULE)
   .then(() => {
-    setBootstrapStatus('主插件已加载 · 工作台可用');
+    queueMicrotask(() => {
+      setBootstrapStatus(
+        typeof globalThis.IsoldeNaiOpenWorkbench === 'function'
+          ? '主插件已加载 · 工作台可用'
+          : '主插件已载入 · 正在初始化界面'
+      );
+    });
+    window.setTimeout(() => {
+      if (typeof globalThis.IsoldeNaiOpenWorkbench === 'function') {
+        setBootstrapStatus('主插件已加载 · 工作台可用');
+      }
+    }, 300);
   })
   .catch((error) => {
-    console.error('[Isolde.nai] main extension failed to load; fallback entries remain available.', error);
-    setBootstrapStatus('主插件加载失败 · 仍可打开工作台', 'error');
+    console.error('[Isolde.nai] main extension failed to load; fallback entry remains available.', error);
+    setBootstrapStatus('主插件加载失败 · 已启用兜底工作台', 'error');
     const item = document.getElementById(WAND_ENTRY_ID);
-    if (item) item.title = 'Isolde.nai 主插件加载失败 · 点击打开工作台';
+    if (item) item.title = 'Isolde.nai 主插件加载失败 · 点击打开兜底工作台';
   });
