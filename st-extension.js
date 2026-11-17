@@ -4,12 +4,18 @@ import {
   event_types,
   generateQuietPrompt,
   saveSettingsDebounced,
+  is_send_press,
+  swipeState,
+  online_status,
+  activateSendButtons,
+  sendTextareaMessage,
 } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 import { getContext } from '../../../st-context.js';
 import { saveBase64AsFile } from '../../../utils.js';
 import { deleteMediaFromServer } from '../../../chats.js';
-import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
+import { isExecutingCommandsFromChatInput } from '../../../slash-commands.js';
+import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_STATE } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
 const EXTENSION_ASSET_VERSION = '0.9.23';
@@ -497,7 +503,7 @@ function installSendGuard() {
 
       if (!unchanged || generating || stopVisible) return;
 
-      if (swipeState !== 0) {
+      if (swipeState !== SWIPE_STATE.NONE) {
         report('发送被 Swipe 状态拦住了。先结束当前滑动/编辑状态。');
         return;
       }
