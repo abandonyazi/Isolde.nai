@@ -4,18 +4,12 @@ import {
   event_types,
   generateQuietPrompt,
   saveSettingsDebounced,
-  is_send_press,
-  swipeState,
-  online_status,
-  activateSendButtons,
-  sendTextareaMessage,
 } from '../../../../script.js';
 import { extension_settings } from '../../../extensions.js';
 import { getContext } from '../../../st-context.js';
 import { saveBase64AsFile } from '../../../utils.js';
 import { deleteMediaFromServer } from '../../../chats.js';
-import { isExecutingCommandsFromChatInput } from '../../../slash-commands.js';
-import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR, SWIPE_STATE } from '../../../constants.js';
+import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
 const EXTENSION_ASSET_VERSION = '0.9.23';
@@ -472,72 +466,6 @@ function renderControls() {
 }
 
 
-function installSendGuard() {
-  const sendButton = document.getElementById('send_but');
-  const textarea = document.getElementById('send_textarea');
-  if (!sendButton || !textarea || sendButton.dataset.isoldeSendGuard === '1') return;
-
-  sendButton.dataset.isoldeSendGuard = '1';
-  let recovering = false;
-
-  const report = (message) => {
-    try {
-      globalThis.toastr?.warning?.(message, 'Isolde.nai · 发送诊断', { timeOut: 6500 });
-    } catch {}
-    console.warn('[Isolde.nai send guard]', message);
-  };
-
-  sendButton.addEventListener('click', () => {
-    if (recovering) return;
-    const before = String(textarea.value || '');
-
-    window.setTimeout(async () => {
-      if (recovering) return;
-
-      const unchanged = String(textarea.value || '') === before && before.length > 0;
-      const generating = document.body.dataset.generating === 'true';
-      const stopVisible = (() => {
-        const stop = document.getElementById('mes_stop');
-        return !!stop && getComputedStyle(stop).display !== 'none';
-      })();
-
-      if (!unchanged || generating || stopVisible) return;
-
-      if (swipeState !== SWIPE_STATE.NONE) {
-        report('发送被 Swipe 状态拦住了。先结束当前滑动/编辑状态。');
-        return;
-      }
-
-      if (isExecutingCommandsFromChatInput) {
-        report('发送被正在执行的斜杠命令锁住了。');
-        return;
-      }
-
-      if (online_status === 'no_connection') {
-        report('酒馆当前 API 状态是未连接，所以消息没有进入生成。');
-        return;
-      }
-
-      if (is_send_press) {
-        recovering = true;
-        console.warn('[Isolde.nai send guard] stale is_send_press detected; resetting once.');
-        activateSendButtons();
-        try {
-          await sendTextareaMessage();
-        } catch (error) {
-          console.error('[Isolde.nai send guard] retry failed', error);
-          report('检测到发送锁假死，已复位，但重试仍失败。请看控制台错误。');
-        } finally {
-          window.setTimeout(() => { recovering = false; }, 800);
-        }
-        return;
-      }
-
-      report('发送函数在进入生成前异常退出。请查看控制台，下一步可据此定位具体 JS 错误。');
-    }, 600);
-  }, true);
-}
-
 function createUi() {
   const uiRoot = ensureUiShadowRoot();
 
@@ -660,7 +588,6 @@ function createUi() {
   globalThis.IsoldeNaiCloseWorkbench = closeWorkbenchUi;
   globalThis.IsoldeNaiOpenQuickSettings = openQuickSettingsUi;
   globalThis.IsoldeNaiCloseQuickSettings = closeQuickSettingsUi;
-  installSendGuard();
   renderControls();
 }
 
