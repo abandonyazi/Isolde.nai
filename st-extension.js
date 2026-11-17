@@ -98,7 +98,7 @@ function createUi() {
   orbImage.className = 'isolde-orb-image';
   orbImage.alt = '';
   orbImage.setAttribute('aria-hidden', 'true');
-  orbImage.src = new URL('./icon.svg', import.meta.url).href;
+  orbImage.src = new URL('./assets/isolde-orb.svg', import.meta.url).href;
   orb.appendChild(orbImage);
 
   popover = document.createElement('section');
