@@ -12,8 +12,12 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.16';
+const EXTENSION_ASSET_VERSION = '0.9.17';
 const UI_HOST_ID = 'isolde-nai-ui-host';
+const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
+const ORB_SIZE = 48;
+const ORB_SNAP_ZONE = 56;
+const ORB_CLICK_SLOP = 6;
 
 function ensureUiShadowRoot() {
   let host = document.getElementById(UI_HOST_ID);
@@ -32,6 +36,48 @@ function ensureUiShadowRoot() {
     link.href = new URL('./st-extension.css?ver=' + EXTENSION_ASSET_VERSION, import.meta.url).href;
     shadow.appendChild(link);
   }
+
+  if (!shadow.querySelector('style[data-isolde-orb-critical]')) {
+    const style = document.createElement('style');
+    style.dataset.isoldeOrbCritical = '1';
+    style.textContent = `
+      #isolde-nai-orb{
+        position:fixed !important;
+        z-index:2147482000 !important;
+        width:48px !important;
+        height:48px !important;
+        min-width:48px !important;
+        min-height:48px !important;
+        padding:0 !important;
+        margin:0 !important;
+        display:grid !important;
+        place-items:center !important;
+        border:2px solid rgba(202,229,230,.92) !important;
+        border-radius:50% !important;
+        background:#dff3ef !important;
+        box-shadow:0 10px 30px rgba(22,42,62,.28),0 0 0 1px rgba(104,155,166,.20) !important;
+        overflow:hidden !important;
+        cursor:grab !important;
+        touch-action:none !important;
+        user-select:none !important;
+        -webkit-user-select:none !important;
+        opacity:1 !important;
+        visibility:visible !important;
+        pointer-events:auto !important;
+        box-sizing:border-box !important;
+      }
+      #isolde-nai-orb:active{cursor:grabbing !important}
+      #isolde-nai-orb .isolde-orb-image{
+        width:100% !important;
+        height:100% !important;
+        display:block !important;
+        object-fit:cover !important;
+        border-radius:50% !important;
+        pointer-events:none !important;
+      }
+    `;
+    shadow.appendChild(style);
+  }
   return shadow;
 }
 
@@ -43,6 +89,121 @@ function openWorkbenchUi() {
 
 function closeWorkbenchUi() {
   if (workbench) workbench.classList.remove('open');
+}
+
+function loadOrbPosition() {
+  try {
+    const raw = localStorage.getItem(ORB_POS_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && ['left', 'right', 'none'].includes(parsed.dock)) {
+        return {
+          dock: parsed.dock,
+          x: Number(parsed.x) || 0,
+          y: Number(parsed.y) || Math.round(window.innerHeight * 0.6),
+        };
+      }
+    }
+  } catch {}
+  return { dock: 'right', x: 0, y: Math.round(window.innerHeight * 0.6) };
+}
+
+let orbPosition = loadOrbPosition();
+
+function clampOrbPosition() {
+  const maxY = Math.max(0, window.innerHeight - ORB_SIZE);
+  orbPosition.y = Math.min(Math.max(0, orbPosition.y), maxY);
+  if (orbPosition.dock === 'none') {
+    const maxX = Math.max(0, window.innerWidth - ORB_SIZE);
+    orbPosition.x = Math.min(Math.max(0, orbPosition.x), maxX);
+  }
+}
+
+function saveOrbPosition() {
+  try {
+    localStorage.setItem(ORB_POS_KEY, JSON.stringify(orbPosition));
+  } catch {}
+}
+
+function applyOrbPosition() {
+  if (!orb) return;
+  clampOrbPosition();
+  orb.style.top = orbPosition.y + 'px';
+  orb.style.bottom = 'auto';
+  orb.style.left = 'auto';
+  orb.style.right = 'auto';
+  orb.style.transform = 'none';
+  if (orbPosition.dock === 'left') orb.style.left = '0px';
+  else if (orbPosition.dock === 'right') orb.style.right = '0px';
+  else orb.style.left = orbPosition.x + 'px';
+}
+
+function installOrbDragging() {
+  if (!orb) return;
+
+  let dragging = false;
+  let pointerId = null;
+  let startX = 0;
+  let startY = 0;
+  let grabDX = 0;
+  let grabDY = 0;
+  let moved = 0;
+
+  const currentLeft = () => {
+    if (orbPosition.dock === 'right') return window.innerWidth - ORB_SIZE;
+    if (orbPosition.dock === 'left') return 0;
+    return orbPosition.x;
+  };
+
+  orb.addEventListener('pointerdown', (event) => {
+    pointerId = event.pointerId;
+    dragging = true;
+    moved = 0;
+    startX = event.clientX;
+    startY = event.clientY;
+    grabDX = event.clientX - currentLeft();
+    grabDY = event.clientY - orbPosition.y;
+    orb.setPointerCapture?.(event.pointerId);
+  });
+
+  orb.addEventListener('pointermove', (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    moved = Math.max(moved, Math.abs(event.clientX - startX) + Math.abs(event.clientY - startY));
+    orbPosition.dock = 'none';
+    orbPosition.x = event.clientX - grabDX;
+    orbPosition.y = event.clientY - grabDY;
+    applyOrbPosition();
+  });
+
+  const finish = (event) => {
+    if (!dragging || event.pointerId !== pointerId) return;
+    dragging = false;
+    pointerId = null;
+
+    if (moved < ORB_CLICK_SLOP) {
+      popover?.classList.toggle('open');
+      return;
+    }
+
+    const leftGap = orbPosition.x;
+    const rightGap = window.innerWidth - (orbPosition.x + ORB_SIZE);
+    if (leftGap <= ORB_SNAP_ZONE) orbPosition.dock = 'left';
+    else if (rightGap <= ORB_SNAP_ZONE) orbPosition.dock = 'right';
+    else orbPosition.dock = 'none';
+
+    applyOrbPosition();
+    saveOrbPosition();
+  };
+
+  orb.addEventListener('pointerup', finish);
+  orb.addEventListener('pointercancel', finish);
+
+  window.addEventListener('resize', () => {
+    applyOrbPosition();
+    saveOrbPosition();
+  }, { passive: true });
+
+  applyOrbPosition();
 }
 const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0, smartSize: 'normal', fixedSize: '832x1216' };
 
@@ -255,8 +416,7 @@ function createUi() {
   });
 
   uiRoot.append(orb, popover, workbench);
-
-  orb.addEventListener('click', () => popover.classList.toggle('open'));
+  installOrbDragging();
 
   const enabledControl = popover.querySelector('[data-isolde-enabled]');
   if (enabledControl) enabledControl.addEventListener('change', (event) => {
