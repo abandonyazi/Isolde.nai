@@ -65,14 +65,57 @@
   #isolde-nai-workbench{width:100%;height:100vh;height:100dvh}
 }
 
-.isolde-media-tools{position:absolute;right:8px;bottom:8px;z-index:8;display:flex;flex-wrap:wrap;justify-content:flex-end;max-width:calc(100% - 16px);gap:6px;opacity:.88}
-.isolde-media-tools button{border:1px solid rgba(255,255,255,.28);border-radius:999px;padding:5px 9px;background:rgba(20,34,48,.72);color:#f4f8fb;font-size:11px;line-height:1.2;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.18)}
-.isolde-media-tools button:hover{background:rgba(42,70,94,.82)}
-.isolde-media-tools button:disabled{opacity:.48;cursor:default}
+.isolde-media-tools{
+  position:absolute;
+  right:10px;
+  bottom:10px;
+  z-index:8;
+  display:flex;
+  align-items:center;
+  justify-content:flex-end;
+  max-width:calc(100% - 20px);
+  padding:4px;
+  gap:0;
+  border:1px solid rgba(255,255,255,.42);
+  border-radius:999px;
+  background:rgba(245,248,250,.78);
+  color:#263746;
+  box-shadow:0 6px 18px rgba(14,28,40,.14);
+  backdrop-filter:blur(16px) saturate(1.15);
+  -webkit-backdrop-filter:blur(16px) saturate(1.15);
+}
+.isolde-media-tools button{
+  min-height:28px;
+  border:0;
+  border-radius:999px;
+  padding:5px 10px;
+  background:transparent;
+  color:inherit;
+  font-size:11px;
+  line-height:1;
+  font-weight:520;
+  cursor:pointer;
+  box-shadow:none;
+  transition:background .15s ease,color .15s ease,opacity .15s ease;
+}
+.isolde-media-tools button + button{
+  box-shadow:inset 1px 0 0 rgba(72,94,112,.12);
+}
+.isolde-media-tools button:hover,
+.isolde-media-tools button:active{
+  background:rgba(95,125,148,.12);
+}
+.isolde-media-tools button:disabled{opacity:.42;cursor:default}
 .mes_media_container{position:relative}
 
-.isolde-media-tools .isolde-delete{background:rgba(126,53,65,.74);border-color:rgba(255,190,198,.22)}
-.isolde-media-tools .isolde-delete:hover{background:rgba(151,61,75,.86)}
+.isolde-media-tools .isolde-delete{
+  color:#a85a62;
+}
+.isolde-media-tools .isolde-delete:hover,
+.isolde-media-tools .isolde-delete:active{
+  background:rgba(168,90,98,.10);
+  color:#944b53;
+}
 
 .isolde-inline-media-slot{display:grid;gap:10px;margin:10px 0 14px}
 .isolde-inline-media-slot .isolde-inline-image{width:min(100%,760px);max-width:100%;margin:0;justify-self:start;position:relative}
@@ -93,4 +136,7 @@
 .isolde-placeholder-actions button:disabled{opacity:.46;cursor:default}
 @media(max-width:600px){.isolde-generation-placeholder{min-height:112px;padding:13px;align-items:stretch;flex-direction:column}.isolde-placeholder-actions{justify-content:flex-end}}
 
-@media(max-width:600px){.isolde-media-tools{gap:5px}.isolde-media-tools button{padding:5px 8px;font-size:10px}}
+@media(max-width:600px){
+  .isolde-media-tools{right:8px;bottom:8px;max-width:calc(100% - 16px);padding:3px}
+  .isolde-media-tools button{min-height:27px;padding:5px 8px;font-size:10px}
+}
