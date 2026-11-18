@@ -659,3 +659,39 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .guidance-rescale-control strong{min-width:40px}
 .guidance-rescale-hint{margin-top:7px}
 .guidance-rescale-hint.warning{color:var(--danger)}
+
+
+/* v76: compact custom Quick Words */
+.scene-prompt-tools{display:flex;align-items:center;gap:10px}
+.quick-words-menu{
+  position:absolute;z-index:31;right:0;top:calc(100% + 6px);
+  width:min(310px,82vw);padding:9px;border:1px solid var(--line);border-radius:15px;
+  background:var(--card);box-shadow:0 12px 30px rgba(39,61,82,.16);
+}
+.quick-word-chips{display:flex;flex-wrap:wrap;gap:7px}
+.quick-word-chip{
+  border:1px solid var(--line);border-radius:999px;background:var(--card);color:var(--accent-strong);
+  min-height:32px;padding:0 11px;font-size:12px;
+}
+.quick-word-chip:active{background:var(--accent-soft)}
+.quick-word-empty{padding:7px;color:var(--muted);font-size:12px}
+.quick-word-manage{
+  width:100%;margin-top:8px;padding:9px 8px 2px;border:0;border-top:1px solid var(--line);
+  background:transparent;color:var(--muted);font-size:12px;text-align:left;
+}
+.quick-words-panel{max-width:520px;margin:auto}
+.quick-words-note{margin:4px 0 12px;color:var(--muted);font-size:12px;line-height:1.5}
+.quick-word-editor{padding:0 0 14px;border-bottom:1px solid var(--line)}
+.quick-word-editor-actions{margin-top:10px}
+.quick-word-list{display:grid;gap:8px;margin-top:12px;max-height:34dvh;overflow:auto}
+.quick-word-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:10px;border:1px solid var(--line);border-radius:13px;background:rgba(247,250,253,.64)}
+.quick-word-row-text{min-width:0}
+.quick-word-row-text strong{display:block;font-size:13px}
+.quick-word-row-text span{display:block;margin-top:3px;color:var(--muted);font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.quick-word-row-actions{display:flex;gap:5px;flex:0 0 auto}
+.quick-word-row-actions .small-btn{min-height:30px;padding:0 8px;font-size:11px}
+@media(max-width:430px){
+  .scene-prompt-tools{gap:7px}
+  .scene-prompt-tools .scene-insert-btn{font-size:11px}
+  .quick-word-row{align-items:flex-start}
+}
