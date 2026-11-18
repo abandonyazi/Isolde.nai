@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=88',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=89',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -906,25 +906,9 @@ function openQuickWordsManager() {
   els.quickWordsMenu?.classList.add('hidden');
   els.quickWordsDialog?.showModal();
 }
-function renderQuickWordsMenu() {
-  const menu=els.quickWordsMenu;if(!menu)return;
-  ensureQuickWordActiveCategory();
-  menu.innerHTML='';
-
-  const selectWrap=document.createElement('div');selectWrap.className='quick-word-popup-category';
-  const select=document.createElement('select');select.className='quick-word-popup-select';
-  if(!quickWordCategories.length){
-    const option=document.createElement('option');option.value='';option.textContent='还没有分类';select.appendChild(option);select.disabled=true;
-  }else{
-    for(const category of quickWordCategories){
-      const option=document.createElement('option');option.value=category.id;option.textContent=category.name;select.appendChild(option);
-    }
-    select.value=quickWordsActiveCategory;
-    select.addEventListener('change',(event)=>{event.stopPropagation();quickWordsActiveCategory=select.value;renderQuickWordsMenu();});
-  }
-  selectWrap.appendChild(select);
-
-  const body=document.createElement('div');body.className='quick-word-menu-body';
+function renderQuickWordsMenuBody(body) {
+  if(!body)return;
+  body.innerHTML='';
   const chips=document.createElement('div');chips.className='quick-word-chips';
   const visible=quickWords.filter(item=>item.categoryId===quickWordsActiveCategory);
   if(visible.length){
@@ -939,6 +923,33 @@ function renderQuickWordsMenu() {
     chips.appendChild(note);
   }
   body.appendChild(chips);
+}
+function renderQuickWordsMenu() {
+  const menu=els.quickWordsMenu;if(!menu)return;
+  ensureQuickWordActiveCategory();
+  menu.innerHTML='';
+
+  const selectWrap=document.createElement('div');selectWrap.className='quick-word-popup-category';
+  const select=document.createElement('select');select.className='quick-word-popup-select';
+  const body=document.createElement('div');body.className='quick-word-menu-body';
+  if(!quickWordCategories.length){
+    const option=document.createElement('option');option.value='';option.textContent='还没有分类';select.appendChild(option);select.disabled=true;
+  }else{
+    for(const category of quickWordCategories){
+      const option=document.createElement('option');option.value=category.id;option.textContent=category.name;select.appendChild(option);
+    }
+    select.value=quickWordsActiveCategory;
+    select.addEventListener('pointerdown',(event)=>event.stopPropagation());
+    select.addEventListener('click',(event)=>event.stopPropagation());
+    select.addEventListener('change',(event)=>{
+      event.stopPropagation();
+      quickWordsActiveCategory=select.value;
+      renderQuickWordsMenuBody(body);
+    });
+  }
+  selectWrap.appendChild(select);
+
+  renderQuickWordsMenuBody(body);
 
   const manage=document.createElement('button');manage.type='button';manage.className='quick-word-manage';manage.textContent='＋ 管理快捷词';
   manage.addEventListener('click',(event)=>{event.stopPropagation();openQuickWordsManager();});
@@ -2985,6 +2996,7 @@ els.jumpAnchorsBtn.addEventListener('click',()=>goView('anchors'));
 els.quickWordsBtn?.addEventListener('pointerdown',rememberSceneInsertSelection);
 els.quickWordsBtn?.addEventListener('click',(event)=>{event.stopPropagation();toggleQuickWordsMenu();});
 els.quickWordsMenu?.addEventListener('pointerdown',(event)=>event.stopPropagation());
+els.quickWordsMenu?.addEventListener('click',(event)=>event.stopPropagation());
 els.quickWordForm?.addEventListener('submit',saveQuickWord);
 els.cancelQuickWordEditBtn?.addEventListener('click',()=>resetQuickWordEditor());
 els.quickWordFormCategorySelect?.addEventListener('change',()=>{
@@ -3011,7 +3023,11 @@ els.newQuickWordCategoryForm?.addEventListener('submit',saveNewQuickWordCategory
 els.insertAnchorPromptsBtn?.addEventListener('pointerdown',rememberSceneInsertSelection);
 els.insertAnchorPromptsBtn?.addEventListener('click',(event)=>{event.stopPropagation();els.quickWordsMenu?.classList.add('hidden');renderInsertAnchorMenu();});
 els.insertAnchorMenu?.addEventListener('pointerdown',(event)=>event.stopPropagation());
-document.addEventListener('click',()=>{els.insertAnchorMenu?.classList.add('hidden');els.quickWordsMenu?.classList.add('hidden');});
+document.addEventListener('click',(event)=>{
+  const target=event.target;
+  if(!els.insertAnchorMenu?.contains(target)&&!els.insertAnchorPromptsBtn?.contains(target))els.insertAnchorMenu?.classList.add('hidden');
+  if(!els.quickWordsMenu?.contains(target)&&!els.quickWordsBtn?.contains(target))els.quickWordsMenu?.classList.add('hidden');
+});
 document.addEventListener('keydown',(event)=>{if(event.key==='Escape'){els.insertAnchorMenu?.classList.add('hidden');els.quickWordsMenu?.classList.add('hidden');}});
 els.generateBtn.addEventListener('click',()=>generate());
 els.saveLink?.addEventListener('click',async()=>{
