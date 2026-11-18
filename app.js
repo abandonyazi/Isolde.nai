@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=86',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=87',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1256,10 +1256,102 @@ async function decodeNaiTextChunk(type,data){
   }
   return null;
 }
+async function gunzipBytes(bytes){
+  if(typeof DecompressionStream==='function'){
+    const stream=new Blob([bytes]).stream().pipeThrough(new DecompressionStream('gzip'));
+    const out=await new Response(stream).arrayBuffer();
+    return new Uint8Array(out);
+  }
+  const mod=await import('https://cdn.jsdelivr.net/npm/fflate@0.8.2/+esm');
+  return mod.gunzipSync(bytes);
+}
+function stealthByteReader(imageData,width,height,mode='alpha'){
+  const data=imageData.data;
+  const pixelCount=width*height;
+  const bitsPerPixel=mode==='rgb'?3:1;
+  const capacity=pixelCount*bitsPerPixel;
+  const bitAt=(bitIndex)=>{
+    const pixelIndex=Math.floor(bitIndex/bitsPerPixel);
+    if(pixelIndex<0||pixelIndex>=pixelCount)return 0;
+    const x=Math.floor(pixelIndex/height),y=pixelIndex%height;
+    const base=(y*width+x)*4;
+    if(mode==='rgb')return data[base+(bitIndex%3)]&1;
+    return data[base+3]&1;
+  };
+  const bytesAt=(startBit,count)=>{
+    const out=new Uint8Array(count);
+    for(let i=0;i<count;i++){
+      let value=0;
+      for(let b=0;b<8;b++)value=(value<<1)|bitAt(startBit+i*8+b);
+      out[i]=value;
+    }
+    return out;
+  };
+  return {capacity,bitAt,bytesAt};
+}
+async function readStealthPngMetadata(file){
+  const url=URL.createObjectURL(file);
+  try{
+    const image=await loadCanvasImage(url);
+    const width=image.naturalWidth,height=image.naturalHeight;
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)return null;
+    ctx.drawImage(image,0,0);
+    const imageData=ctx.getImageData(0,0,width,height);
+    const sigBytes=new TextEncoder().encode('stealth_pnginfo').length;
+    for(const mode of ['alpha','rgb']){
+      const reader=stealthByteReader(imageData,width,height,mode);
+      if(reader.capacity<(sigBytes*8+32))continue;
+      let signature='';
+      try{signature=new TextDecoder().decode(reader.bytesAt(0,sigBytes));}catch{continue;}
+      const allowed=mode==='alpha'
+        ? new Set(['stealth_pnginfo','stealth_pngcomp'])
+        : new Set(['stealth_rgbinfo','stealth_rgbcomp']);
+      if(!allowed.has(signature))continue;
+      let lengthBits=0;
+      for(let i=0;i<32;i++)lengthBits=lengthBits*2+reader.bitAt(sigBytes*8+i);
+      if(!Number.isFinite(lengthBits)||lengthBits<=0||lengthBits>NAI_META_MAX*8)continue;
+      const payloadStart=sigBytes*8+32;
+      if(payloadStart+lengthBits>reader.capacity)continue;
+      const payload=reader.bytesAt(payloadStart,Math.floor(lengthBits/8));
+      const raw=signature.endsWith('comp')?await gunzipBytes(payload):payload;
+      const text=new TextDecoder('utf-8').decode(raw).trim();
+      if(text)return {text,signature,mode};
+    }
+  }catch(e){console.warn('Stealth PNG metadata 解析失败',e);}
+  finally{URL.revokeObjectURL(url);}
+  return null;
+}
+async function destroyStealthAlphaHeader(blob){
+  if(!(blob instanceof Blob)||blob.type&&blob.type!=='image/png')return blob;
+  const url=URL.createObjectURL(blob);
+  try{
+    const image=await loadCanvasImage(url);
+    const width=image.naturalWidth,height=image.naturalHeight;
+    const canvas=document.createElement('canvas');canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d',{willReadFrequently:true});if(!ctx)return blob;
+    ctx.drawImage(image,0,0);
+    const imageData=ctx.getImageData(0,0,width,height);
+    const data=imageData.data;
+    const headerBits=Math.min(width*height,new TextEncoder().encode('stealth_pnginfo').length*8);
+    for(let bit=0;bit<headerBits;bit++){
+      const x=Math.floor(bit/height),y=bit%height;
+      const alphaIndex=(y*width+x)*4+3;
+      data[alphaIndex]&=0xFE;
+    }
+    ctx.putImageData(imageData,0,0);
+    return await new Promise((resolve,reject)=>canvas.toBlob(result=>result?resolve(result):reject(new Error('PNG 清理失败')),'image/png'));
+  }finally{URL.revokeObjectURL(url);}
+}
+async function sanitizeNaiPngMetadata(blob){
+  const stealthClean=await destroyStealthAlphaHeader(blob);
+  return await stripPngMetadata(stealthClean);
+}
+
 async function readNaiPngText(file){
   if(file.size>40*1024*1024)throw new Error('图片太大，请控制在 40MB 以内');
   const buffer=await file.arrayBuffer(),bytes=new Uint8Array(buffer);
-  if(bytes.length<33||!bytesEqualAt(bytes,NAI_PNG_SIGNATURE))throw new Error('请选择 NovelAI 原始 PNG 图片');
+  if(bytes.length<33||!bytesEqualAt(bytes,NAI_PNG_SIGNATURE))throw new Error('请选择 PNG 图片');
   const view=new DataView(buffer),width=view.getUint32(16,false),height=view.getUint32(20,false),entries=[];let offset=8,count=0,totalText=0;
   while(offset+12<=bytes.length&&count++<4096){
     const length=view.getUint32(offset,false),type=new TextDecoder('iso-8859-1').decode(bytes.subarray(offset+4,offset+8)),start=offset+8,end=start+length,next=end+4;
@@ -1267,7 +1359,8 @@ async function readNaiPngText(file){
     if(['tEXt','zTXt','iTXt'].includes(type)){try{const entry=await decodeNaiTextChunk(type,bytes.subarray(start,end));if(entry){totalText+=entry.text.length;if(totalText<=NAI_META_MAX)entries.push(entry);}}catch{}}
     offset=next;if(type==='IEND')break;
   }
-  return {entries,width,height};
+  const stealth=await readStealthPngMetadata(file);
+  return {entries,width,height,stealth};
 }
 function nestedNaiMetadata(value,source=''){
   if(!value)return null;
@@ -1322,6 +1415,7 @@ async function inspectNaiImage(file){
   const data=await readNaiPngText(file),entries=data.entries,sourceEntry=entries.find((entry)=>entry.keyword.toLowerCase()==='source')?.text?.trim()||'',description=entries.find((entry)=>entry.keyword.toLowerCase()==='description')?.text?.trim()||'';
   let raw=null;
   for(const key of ['comment','description']){for(const candidate of entries.filter((entry)=>entry.keyword.toLowerCase()===key)){raw=nestedNaiMetadata(candidate.text,sourceEntry);if(raw)break;}if(raw)break;}
+  if(!raw&&data.stealth?.text)raw=nestedNaiMetadata(data.stealth.text,sourceEntry);
   if(!raw)throw new Error('没有检测到可解析的 NovelAI metadata');
   const prompt=naiPromptText(raw,description);if(!prompt&&!raw.steps&&!raw.sampler)throw new Error('这张 PNG 没有完整的 NovelAI 生成参数');
   const split=splitArtistPrompt(prompt);return {file,artist:split.artist,positive:split.positive,negative:naiNegativeText(raw),params:normalizedInspectParams(raw,data.width,data.height)};
@@ -1525,7 +1619,7 @@ async function stripPngMetadata(blob){
   return new Blob(parts,{type:'image/png'});
 }
 async function saveImageBlob(blob,name){
-  const output=els.keepNaiMetadata?.checked ? blob : await stripPngMetadata(blob);
+  const output=els.keepNaiMetadata?.checked ? blob : await sanitizeNaiPngMetadata(blob);
   return saveBlob(output,name);
 }
 function fallbackDownload(blob,name){
@@ -1586,7 +1680,7 @@ async function addCustomWatermark(source){
 }
 async function saveWatermarkedBlob(blob,name){
   const watermarked=await addCustomWatermark(blob);
-  const cleanWatermarked=await stripPngMetadata(watermarked);
+  const cleanWatermarked=await sanitizeNaiPngMetadata(watermarked);
   await saveBlob(cleanWatermarked,name);
 }
 async function testConnection(){
