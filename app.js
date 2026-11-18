@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=87',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=88',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1322,7 +1322,7 @@ async function readStealthPngMetadata(file){
   finally{URL.revokeObjectURL(url);}
   return null;
 }
-async function destroyStealthAlphaHeader(blob){
+async function destroyStealthAlphaMetadata(blob){
   if(!(blob instanceof Blob)||blob.type&&blob.type!=='image/png')return blob;
   const url=URL.createObjectURL(blob);
   try{
@@ -1333,18 +1333,17 @@ async function destroyStealthAlphaHeader(blob){
     ctx.drawImage(image,0,0);
     const imageData=ctx.getImageData(0,0,width,height);
     const data=imageData.data;
-    const headerBits=Math.min(width*height,new TextEncoder().encode('stealth_pnginfo').length*8);
-    for(let bit=0;bit<headerBits;bit++){
-      const x=Math.floor(bit/height),y=bit%height;
-      const alphaIndex=(y*width+x)*4+3;
-      data[alphaIndex]&=0xFE;
+    let effectivelyOpaque=true;
+    for(let i=3;i<data.length;i+=4){if(data[i]<254){effectivelyOpaque=false;break;}}
+    for(let i=3;i<data.length;i+=4){
+      data[i]=effectivelyOpaque?255:(data[i]&0xFE);
     }
     ctx.putImageData(imageData,0,0);
     return await new Promise((resolve,reject)=>canvas.toBlob(result=>result?resolve(result):reject(new Error('PNG 清理失败')),'image/png'));
   }finally{URL.revokeObjectURL(url);}
 }
 async function sanitizeNaiPngMetadata(blob){
-  const stealthClean=await destroyStealthAlphaHeader(blob);
+  const stealthClean=await destroyStealthAlphaMetadata(blob);
   return await stripPngMetadata(stealthClean);
 }
 
