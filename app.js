@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=85',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=86',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1586,7 +1586,8 @@ async function addCustomWatermark(source){
 }
 async function saveWatermarkedBlob(blob,name){
   const watermarked=await addCustomWatermark(blob);
-  await saveBlob(watermarked,name);
+  const cleanWatermarked=await stripPngMetadata(watermarked);
+  await saveBlob(cleanWatermarked,name);
 }
 async function testConnection(){
   els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
