@@ -881,3 +881,39 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 /* v83: choose existing category when saving a Quick Word */
 .quick-category-create-row.hidden{display:none !important}
 .quick-word-editor > .field:first-of-type{margin-top:12px}
+
+
+/* v85: compact Quick Words category controls */
+.quick-words-panel > .quick-words-note{display:none !important}
+.quick-category-inline.compact{
+  margin:6px 0 8px;
+  padding:0;
+  border:0;
+  border-radius:0;
+  background:transparent;
+}
+.quick-category-main-actions{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:10px;
+}
+.quick-category-main-actions .secondary-btn{
+  width:100%;
+  min-height:42px;
+}
+.quick-category-inline.compact .quick-category-create-row{
+  margin-top:8px;
+}
+.quick-category-inline.compact .quick-category-manage-list{
+  margin-top:8px;
+}
+.quick-word-editor.compact-editor{
+  padding-top:0;
+}
+.quick-word-editor.compact-editor > .field:first-of-type{
+  margin-top:6px;
+}
+@media(max-width:430px){
+  .quick-category-main-actions{grid-template-columns:1fr 1fr;gap:8px}
+  .quick-category-main-actions .secondary-btn{padding:0 8px}
+}
