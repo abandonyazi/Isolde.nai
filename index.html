@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=49" />
+  <link rel="stylesheet" href="./app.css?v=50" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -539,16 +539,23 @@
       </div>
       <p class="quick-words-note">先选分类，再往这个分类里添加快捷词。插入时会自动补逗号分隔。</p>
 
-      <div class="quick-category-toolbar">
-        <label class="field quick-category-select-field">
-          <span>分类</span>
-          <select id="quickWordCategorySelect"></select>
-        </label>
-        <div class="quick-category-actions">
-          <button id="addQuickWordCategoryBtn" class="secondary-btn" type="button">＋ 新建分类</button>
-          <button id="manageQuickWordCategoriesBtn" class="text-btn" type="button">管理分类</button>
+      <section class="quick-category-inline">
+        <div class="quick-category-inline-head">
+          <strong>分类设置</strong>
         </div>
-      </div>
+        <div class="quick-category-toolbar">
+          <label class="field quick-category-select-field">
+            <span>当前分类</span>
+            <select id="quickWordCategorySelect"></select>
+          </label>
+          <button id="addQuickWordCategoryBtn" class="secondary-btn quick-category-add-btn" type="button">＋ 新建</button>
+        </div>
+        <form id="newQuickWordCategoryForm" class="quick-category-create-row">
+          <input id="newQuickWordCategoryName" maxlength="20" autocomplete="off" placeholder="输入新分类名称" />
+          <button class="secondary-btn" type="submit">添加分类</button>
+        </form>
+        <div id="quickWordCategoryList" class="quick-category-manage-list"></div>
+      </section>
 
       <form id="quickWordForm" class="quick-word-editor">
         <input id="quickWordId" type="hidden" />
@@ -560,34 +567,6 @@
         </div>
       </form>
       <div id="quickWordList" class="quick-word-list"></div>
-    </div>
-  </dialog>
-
-  <dialog id="newQuickWordCategoryDialog" class="modal">
-    <form id="newQuickWordCategoryForm" class="modal-panel quick-category-modal-panel">
-      <div class="modal-head">
-        <h2>新建分类</h2>
-        <button class="icon-btn" type="button" data-close="newQuickWordCategoryDialog" aria-label="关闭">×</button>
-      </div>
-      <label class="field">
-        <span>分类名称</span>
-        <input id="newQuickWordCategoryName" maxlength="20" autocomplete="off" placeholder="例如：镜头 / 表情 / 动作" />
-      </label>
-      <div class="settings-actions">
-        <button class="secondary-btn" type="button" data-close="newQuickWordCategoryDialog">取消</button>
-        <button class="primary-btn" type="submit">保存分类</button>
-      </div>
-    </form>
-  </dialog>
-
-  <dialog id="manageQuickWordCategoriesDialog" class="modal">
-    <div class="modal-panel quick-category-modal-panel">
-      <div class="modal-head">
-        <h2>管理分类</h2>
-        <button class="icon-btn" type="button" data-close="manageQuickWordCategoriesDialog" aria-label="关闭">×</button>
-      </div>
-      <p class="quick-words-note">删除分类时，会一起删除这个分类里的全部快捷词。</p>
-      <div id="quickWordCategoryList" class="quick-category-manage-list"></div>
     </div>
   </dialog>
 
@@ -699,6 +678,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=76"></script>
+  <script type="module" src="./app.js?v=77"></script>
 </body>
 </html>
