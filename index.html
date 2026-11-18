@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=42" />
+  <link rel="stylesheet" href="./app.css?v=43" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -213,14 +213,12 @@
         <details class="details guidance-rescale-details">
           <summary>高级设置</summary>
           <div class="details-body">
-            <label class="guidance-rescale-control">
-              <div class="guidance-rescale-head">
-                <span>Prompt Guidance Rescale</span>
-                <strong id="guidanceRescaleValue">0.32</strong>
-              </div>
+            <label class="watermark-opacity guidance-rescale-control">
+              <span>Prompt Guidance Rescale</span>
               <input id="guidanceRescale" type="range" min="0" max="1" step="0.01" value="0.32" />
-              <small id="guidanceRescaleHint">高 CFG 时缓和过饱和和过硬的颜色边缘。</small>
+              <strong id="guidanceRescaleValue">0.32</strong>
             </label>
+            <small id="guidanceRescaleHint" class="guidance-rescale-hint">高 CFG 时缓和过饱和和过硬的颜色边缘。</small>
           </div>
         </details>
 
