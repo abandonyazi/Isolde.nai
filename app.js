@@ -6,6 +6,7 @@ const TOKEN_KEY = 'isolde_nai_token_v1';
 const THEME_KEY = 'isolde_nai_theme_v1';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
+const API_PRESETS_KEY = 'isolde_nai_api_presets_v1';
 const DB_NAME = 'isolde-nai-gallery';
 const DB_VERSION = 4;
 
@@ -25,9 +26,11 @@ const els = {
   presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
-  galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'),
+  galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
-  apiFormat: $('apiFormat'), endpoint: $('endpoint'), endpointHint: $('endpointHint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), keepNaiMetadata: $('keepNaiMetadata'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
+  apiPresetSelect: $('apiPresetSelect'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
+  apiFormat: $('apiFormat'), endpoint: $('endpoint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), keepNaiMetadata: $('keepNaiMetadata'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
+  deleteConfirmDialog: $('deleteConfirmDialog'), deleteConfirmTitle: $('deleteConfirmTitle'), deleteConfirmText: $('deleteConfirmText'), cancelDeleteBtn: $('cancelDeleteBtn'), confirmDeleteBtn: $('confirmDeleteBtn'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
   vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibePresetSelect: $('vibePresetSelect'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
@@ -37,7 +40,11 @@ const els = {
 let settings = {};
 let presets = [];
 let anchors = [];
+let apiPresets = [];
 let selectedAnchorIds = [];
+let galleryBatchMode = false;
+let selectedGalleryIds = new Set();
+let pendingDeleteAction = null;
 let currentObjectUrl = null;
 let currentResultBlob = null;
 let currentSeed = '';
@@ -276,17 +283,97 @@ function naiFetchBase(raw) {
   return isOfficialBase(base) ? NAI_PROXY_BASE : base;
 }
 function updateEndpointUi() {
-  if (els.apiFormat.value === 'nai') {
-    if (!els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
-    els.endpointHint.textContent = 'NAI 官方当前基址。保持默认时会经 Isolde NAI 的 Cloudflare Worker 安全转发，Safari 不会被 CORS 卡住。';
-  } else {
-    els.endpointHint.textContent = '可填根地址、/v1，或完整 /v1/chat/completions。';
+  if (els.apiFormat.value === 'nai' && !els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
+}
+function apiPresetLabel(item) {
+  try {
+    const host = new URL(item.endpoint).host || item.endpoint;
+    return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${host}`;
+  } catch {
+    return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${item.endpoint || '未命名'}`;
   }
+}
+function renderApiPresets() {
+  if (!els.apiPresetSelect) return;
+  const current = settings.apiPresetId || els.apiPresetSelect.value || '';
+  els.apiPresetSelect.innerHTML = '<option value="">选择已保存的 API 预设</option>';
+  for (const item of apiPresets) {
+    const option = document.createElement('option');
+    option.value = item.id;
+    option.textContent = apiPresetLabel(item);
+    els.apiPresetSelect.appendChild(option);
+  }
+  els.apiPresetSelect.value = apiPresets.some(item => item.id === current) ? current : '';
+  if (els.deleteApiPresetBtn) els.deleteApiPresetBtn.disabled = !els.apiPresetSelect.value;
+}
+function saveCurrentApiPreset() {
+  const endpoint = normalizeBase(els.endpoint.value);
+  const apiFormat = els.apiFormat.value;
+  const token = els.rememberKey.checked ? (els.apiKey.value.trim() || loadSavedToken()) : '';
+  let item = apiPresets.find(p => p.apiFormat === apiFormat && p.endpoint === endpoint);
+  if (!item) {
+    item = { id: uid('api'), apiFormat, endpoint, token, rememberKey: els.rememberKey.checked, updatedAt: Date.now() };
+    apiPresets.unshift(item);
+  } else {
+    Object.assign(item, { token, rememberKey: els.rememberKey.checked, updatedAt: Date.now() });
+  }
+  saveJson(API_PRESETS_KEY, apiPresets);
+  settings.apiPresetId = item.id;
+  saveJson(SETTINGS_KEY, settings);
+  renderApiPresets();
+  els.apiPresetSelect.value = item.id;
+  els.deleteApiPresetBtn.disabled = false;
+  return item;
+}
+function applyApiPreset(id) {
+  const item = apiPresets.find(p => p.id === id);
+  if (!item) return;
+  els.apiFormat.value = item.apiFormat || 'nai';
+  els.endpoint.value = item.endpoint || OFFICIAL_BASE;
+  els.rememberKey.checked = item.rememberKey !== false;
+  els.apiKey.value = item.token || '';
+  if (els.rememberKey.checked && item.token) localStorage.setItem(TOKEN_KEY, item.token);
+  else clearSavedToken();
+  settings.apiPresetId = item.id;
+  updateEndpointUi();
+  saveSettings();
+  els.settingsStatus.className = 'settings-status ok';
+  els.settingsStatus.textContent = `已切换到 ${apiPresetLabel(item)}`;
+  setConnectionState(item.token ? 'ready' : '', item.token ? 'API 预设已载入' : 'API 预设已载入 · 等待 Token');
+  renderApiPresets();
+}
+function deleteCurrentApiPreset() {
+  const id = els.apiPresetSelect?.value;
+  const item = apiPresets.find(p => p.id === id);
+  if (!item) return;
+  requestDeleteConfirmation({
+    title:'删除这个 API 预设？',
+    message:`将删除「${apiPresetLabel(item)}」预设，不会影响已生成的图片。`,
+    confirmText:'删除预设',
+    action:async()=>{
+      apiPresets = apiPresets.filter(p => p.id !== id);
+      saveJson(API_PRESETS_KEY, apiPresets);
+      if (settings.apiPresetId === id) settings.apiPresetId = '';
+      saveJson(SETTINGS_KEY, settings);
+      renderApiPresets();
+      showToast('API 预设已删除');
+    }
+  });
+}
+function requestDeleteConfirmation({title='确认删除？', message='', confirmText='确认删除', action}) {
+  pendingDeleteAction = action;
+  els.deleteConfirmTitle.textContent = title;
+  els.deleteConfirmText.textContent = message;
+  els.confirmDeleteBtn.textContent = confirmText;
+  els.confirmDeleteBtn.disabled = false;
+  els.cancelDeleteBtn.disabled = false;
+  els.deleteConfirmDialog.showModal();
 }
 function loadState() {
   settings = loadJson(SETTINGS_KEY, {});
   presets = loadJson(PRESETS_KEY, []);
   anchors = loadJson(ANCHORS_KEY, []);
+  apiPresets = loadJson(API_PRESETS_KEY, []);
   if (!presets.length) {
     presets = [{
       id: uid('preset'),
@@ -336,6 +423,7 @@ function loadState() {
   els.vibeInformationValue.textContent = Number(els.vibeInformation.value).toFixed(2);
   els.aspect.value = aspectFor(Number(els.width.value), Number(els.height.value));
   updateEndpointUi();
+  renderApiPresets();
   renderPresetSelect();
   renderPresetLibrary();
   renderAnchors();
@@ -367,7 +455,8 @@ function saveSettings() {
     vibeStrength: Number(els.vibeStrength.value),
     vibeInformation: Number(els.vibeInformation.value),
     presetId: els.presetSelect.value,
-    selectedAnchorIds
+    selectedAnchorIds,
+    apiPresetId: settings.apiPresetId || ''
   };
   saveJson(SETTINGS_KEY, settings);
 }
@@ -1968,20 +2057,40 @@ async function deleteGalleryBridgeItem({galleryId=null,seed='',scenePrompt=''}={
 async function getGallery(){
   const db=await openDb();const items=await new Promise((resolve,reject)=>{const tx=db.transaction('history','readonly');const req=tx.objectStore('history').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});db.close();return items.sort((a,b)=>(b.id||0)-(a.id||0));
 }
-async function deleteGalleryItem(id,card){
-  const scrollTop=window.scrollY;
-  const scrollLeft=window.scrollX;
+async function deleteGalleryItem(id){
   await deleteGalleryRecord(id);
-  if(card?.isConnected) card.remove();
-  const remaining=els.galleryGrid.querySelectorAll('.gallery-card').length;
-  els.galleryCount.textContent=`${remaining} 张 · 保存在此设备`;
-  if(!remaining){
-    const note=document.createElement('div');
-    note.className='empty-note';
-    note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';
-    els.galleryGrid.appendChild(note);
-  }
-  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(scrollLeft,scrollTop)));
+  await renderGallery();
+}
+function updateBatchDeleteButton(){
+  if(!els.batchDeleteGalleryBtn) return;
+  if(!galleryBatchMode) els.batchDeleteGalleryBtn.textContent='批量删除';
+  else if(!selectedGalleryIds.size) els.batchDeleteGalleryBtn.textContent='退出批量';
+  else els.batchDeleteGalleryBtn.textContent=`删除已选（${selectedGalleryIds.size}）`;
+}
+function setGallerySelected(card,id,selected){
+  if(selected) selectedGalleryIds.add(id);
+  else selectedGalleryIds.delete(id);
+  card.classList.toggle('gallery-selected',selected);
+  card.querySelector('.gallery-selection-cancel')?.classList.toggle('hidden',!selected);
+  updateBatchDeleteButton();
+}
+async function deleteSelectedGalleryItems(){
+  const ids=[...selectedGalleryIds];
+  if(!ids.length)return;
+  const db=await openDb();
+  await new Promise((resolve,reject)=>{
+    const tx=db.transaction('history','readwrite');
+    const store=tx.objectStore('history');
+    ids.forEach(id=>store.delete(Number(id)));
+    tx.oncomplete=resolve;
+    tx.onerror=()=>reject(tx.error);
+    tx.onabort=()=>reject(tx.error||new Error('批量删除失败'));
+  });
+  db.close();
+  selectedGalleryIds.clear();
+  galleryBatchMode=false;
+  await renderGallery();
+  showToast(`已删除 ${ids.length} 张图片`);
 }
 function applyGalleryMeta(item){
   els.scenePrompt.value=item.scenePrompt??item.prompt??'';
@@ -2010,19 +2119,46 @@ renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.s
 async function renderGallery(){
   els.galleryGrid.innerHTML='';
   try{
-    const items=await getGallery();els.galleryCount.textContent=`${items.length} 张 · 保存在此设备`;
-    if(!items.length){const note=document.createElement('div');note.className='empty-note';note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';els.galleryGrid.appendChild(note);return;}
+    const items=await getGallery();
+    const validIds=new Set(items.map(item=>item.id));
+    selectedGalleryIds=new Set([...selectedGalleryIds].filter(id=>validIds.has(id)));
+    els.galleryCount.textContent=`${items.length} 张 · 保存在此设备`;
+    updateBatchDeleteButton();
+    if(!items.length){
+      galleryBatchMode=false;selectedGalleryIds.clear();updateBatchDeleteButton();
+      const note=document.createElement('div');note.className='empty-note';note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';els.galleryGrid.appendChild(note);return;
+    }
     for(const item of items){
       const card=document.createElement('article');card.className='gallery-card';
+      if(galleryBatchMode)card.classList.add('gallery-batch-mode');
+      const selected=selectedGalleryIds.has(item.id);
+      if(selected)card.classList.add('gallery-selected');
+
       const ib=document.createElement('button');ib.type='button';ib.className='gallery-image-btn';
-      const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);ib.addEventListener('click',()=>applyGalleryMeta(item));card.appendChild(ib);
+      const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);
+      ib.addEventListener('click',()=>{ if(galleryBatchMode)setGallerySelected(card,item.id,!selectedGalleryIds.has(item.id)); else applyGalleryMeta(item); });
+      card.appendChild(ib);
+
+      const cancel=document.createElement('button');cancel.type='button';cancel.className='gallery-selection-cancel'+(selected?'':' hidden');cancel.textContent='取消';
+      cancel.addEventListener('click',(event)=>{event.stopPropagation();setGallerySelected(card,item.id,false);});
+      card.appendChild(cancel);
+
       const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
       const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
-      const actions=document.createElement('div');actions.className='gallery-actions';actions.appendChild(makeButton('保存图片','',()=>saveImageBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));actions.appendChild(makeButton('删除','danger',()=>deleteGalleryItem(item.id,card)));meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+      const actions=document.createElement('div');actions.className='gallery-actions';
+      actions.appendChild(makeButton('保存图片','',()=>saveImageBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));
+      actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));
+      actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));
+      actions.appendChild(makeButton('删除','danger',()=>requestDeleteConfirmation({
+        title:'删除这张图片？',
+        message:'这张图片会从当前设备的图库中删除。',
+        confirmText:'确认删除',
+        action:async()=>{await deleteGalleryItem(item.id);showToast('图片已删除');}
+      })));
+      meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
     }
   }catch(e){console.warn(e);showToast('图库读取失败');}
 }
-
 const ZIP_CRC_TABLE=(()=>{
   const table=new Uint32Array(256);
   for(let n=0;n<256;n++){
@@ -2372,8 +2508,16 @@ async function downloadPreparedGalleryZip(){
 }
 
 async function clearGallery(){
-  if(!confirm('清空整个图库？图片会从这台设备的浏览器存储里删除。'))return;
-  const db=await openDb();await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);});db.close();renderGallery();showToast('图库已清空');
+  requestDeleteConfirmation({
+    title:'清空整个图库？',
+    message:'所有图片都会从这台设备的浏览器存储里删除，这个操作无法撤销。',
+    confirmText:'确认清空',
+    action:async()=>{
+      const db=await openDb();
+      await new Promise((resolve,reject)=>{const tx=db.transaction('history','readwrite');tx.objectStore('history').clear();tx.oncomplete=resolve;tx.onerror=()=>reject(tx.error);tx.onabort=()=>reject(tx.error||new Error('图库清空失败'));});
+      db.close();galleryBatchMode=false;selectedGalleryIds.clear();await renderGallery();showToast('图库已清空');
+    }
+  });
 }
 
 syncThemeImmediately();
@@ -2486,6 +2630,8 @@ els.saveAnchorBtn.addEventListener('click',()=>{
 });
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.close)?.close()));
 
+els.apiPresetSelect?.addEventListener('change',()=>{const id=els.apiPresetSelect.value;if(id)applyApiPreset(id);else if(els.deleteApiPresetBtn)els.deleteApiPresetBtn.disabled=true;});
+els.deleteApiPresetBtn?.addEventListener('click',deleteCurrentApiPreset);
 els.apiFormat.addEventListener('change',()=>{updateEndpointUi();saveSettings();});
 els.toggleKeyBtn.addEventListener('click',()=>{const hidden=els.apiKey.type==='password';els.apiKey.type=hidden?'text':'password';els.toggleKeyBtn.textContent=hidden?'隐藏':'显示';});
 let tokenSaveTimer=null;
@@ -2501,10 +2647,35 @@ els.rememberKey.addEventListener('change',()=>{
 });
 els.testBtn.addEventListener('click',testConnection);
 els.saveSettingsBtn.addEventListener('click',()=>{
-  try{rehydrateConnectionFields();normalizedEndpoint(els.apiFormat.value,els.endpoint.value);const key=els.apiKey.value.trim()||loadSavedToken();if(!key)throw new Error('Token 还是空的');if(!els.apiKey.value.trim())els.apiKey.value=key;persistTokenIfRemembered();saveSettings();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent='设置已保存';setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置已保存');}
+  try{rehydrateConnectionFields();normalizedEndpoint(els.apiFormat.value,els.endpoint.value);const key=els.apiKey.value.trim()||loadSavedToken();if(!key)throw new Error('Token 还是空的');if(!els.apiKey.value.trim())els.apiKey.value=key;persistTokenIfRemembered();saveSettings();const preset=saveCurrentApiPreset();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent=`设置已保存 · ${apiPresetLabel(preset)}`;setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置与 API 预设已保存');}
   catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
 });
+els.batchDeleteGalleryBtn?.addEventListener('click',()=>{
+  if(!galleryBatchMode){
+    galleryBatchMode=true;selectedGalleryIds.clear();renderGallery();return;
+  }
+  if(!selectedGalleryIds.size){
+    galleryBatchMode=false;renderGallery();return;
+  }
+  const count=selectedGalleryIds.size;
+  requestDeleteConfirmation({
+    title:`删除已选的 ${count} 张图片？`,
+    message:'这些图片会从当前设备的图库中删除。',
+    confirmText:`删除 ${count} 张`,
+    action:deleteSelectedGalleryItems
+  });
+});
 els.clearGalleryBtn.addEventListener('click',clearGallery);
+els.cancelDeleteBtn?.addEventListener('click',()=>{if(!els.confirmDeleteBtn.disabled){pendingDeleteAction=null;els.deleteConfirmDialog.close();}});
+els.confirmDeleteBtn?.addEventListener('click',async()=>{
+  if(!pendingDeleteAction)return;
+  const action=pendingDeleteAction;
+  els.confirmDeleteBtn.disabled=true;els.cancelDeleteBtn.disabled=true;
+  try{await action();pendingDeleteAction=null;els.deleteConfirmDialog.close();}
+  catch(e){console.error(e);els.confirmDeleteBtn.disabled=false;els.cancelDeleteBtn.disabled=false;showToast((e?.message||'删除失败').slice(0,160));}
+});
+els.deleteConfirmDialog?.addEventListener('cancel',(event)=>{event.preventDefault();if(!els.confirmDeleteBtn.disabled){pendingDeleteAction=null;els.deleteConfirmDialog.close();}});
+
 els.exportGalleryZipBtn?.addEventListener('click',exportGalleryZip);
 els.downloadGalleryZipBtn?.addEventListener('click',downloadPreparedGalleryZip);
 els.exportConfigBtn?.addEventListener('click',exportPortableConfig);
