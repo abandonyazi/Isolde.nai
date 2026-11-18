@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=44" />
+  <link rel="stylesheet" href="./app.css?v=45" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -537,10 +537,13 @@
         <div><p class="kicker">Quick Words</p><h2>管理快捷词</h2></div>
         <button class="icon-btn" type="button" data-close="quickWordsDialog" aria-label="关闭">×</button>
       </div>
-      <p class="quick-words-note">保存一小段常用提示词。工作台点一下就插入画面词当前光标位置。</p>
+      <p class="quick-words-note">按自己的习惯建分类和快捷词。点击快捷词后会插入画面词当前光标位置，并自动补逗号分隔。</p>
       <form id="quickWordForm" class="quick-word-editor">
         <input id="quickWordId" type="hidden" />
-        <label class="field"><span>显示名称</span><input id="quickWordName" maxlength="24" placeholder="例如：特写 / 哭哭 / 仰拍" /></label>
+        <div class="grid two quick-word-form-grid">
+          <label class="field"><span>分类</span><input id="quickWordCategory" maxlength="20" placeholder="例如：镜头 / 表情 / 动作" /></label>
+          <label class="field"><span>显示名称</span><input id="quickWordName" maxlength="24" placeholder="例如：特写" /></label>
+        </div>
         <label class="field"><span>插入内容</span><textarea id="quickWordPrompt" rows="3" placeholder="例如：close-up, face focus"></textarea></label>
         <div class="settings-actions quick-word-editor-actions">
           <button id="cancelQuickWordEditBtn" class="secondary-btn hidden" type="button">取消编辑</button>
@@ -659,6 +662,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=74"></script>
+  <script type="module" src="./app.js?v=75"></script>
 </body>
 </html>
