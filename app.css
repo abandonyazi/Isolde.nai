@@ -695,3 +695,55 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   .scene-prompt-tools .scene-insert-btn{font-size:11px}
   .quick-word-row{align-items:flex-start}
 }
+
+
+/* v77: categorized user-defined Quick Words */
+.quick-words-menu{
+  width:min(330px,82vw);
+  padding:0;
+  overflow:hidden;
+}
+.quick-word-categories{
+  display:flex;
+  gap:5px;
+  padding:9px 9px 8px;
+  overflow-x:auto;
+  scrollbar-width:none;
+  border-bottom:1px solid var(--line);
+  background:rgba(145,179,207,.055);
+}
+.quick-word-categories::-webkit-scrollbar{display:none}
+.quick-word-category{
+  flex:0 0 auto;
+  min-height:29px;
+  padding:0 10px;
+  border:0;
+  border-radius:9px;
+  background:transparent;
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.quick-word-category.selected{
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-weight:650;
+}
+.quick-word-menu-body{padding:10px 9px 8px;min-height:50px}
+.quick-word-manage{margin:0;padding:9px;border-top:1px solid var(--line)}
+.quick-word-chip{min-height:31px;padding:0 10px}
+.quick-word-form-grid{align-items:end}
+.quick-word-row-meta{display:flex;align-items:center;gap:7px;min-width:0}
+.quick-word-row-meta strong{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.quick-word-category-badge{
+  flex:0 0 auto;
+  padding:3px 7px;
+  border-radius:999px;
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-size:10px;
+}
+@media(max-width:430px){
+  .quick-words-menu{right:-2px;width:min(320px,88vw)}
+  .quick-word-form-grid{grid-template-columns:1fr}
+}
