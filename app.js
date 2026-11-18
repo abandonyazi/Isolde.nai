@@ -28,7 +28,8 @@ const els = {
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
-  apiPresetSelect: $('apiPresetSelect'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
+  apiPresetSelect: $('apiPresetSelect'), renameApiPresetBtn: $('renameApiPresetBtn'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
+  renameApiPresetDialog: $('renameApiPresetDialog'), renameApiPresetForm: $('renameApiPresetForm'), renameApiPresetInput: $('renameApiPresetInput'), saveApiPresetNameBtn: $('saveApiPresetNameBtn'),
   apiFormat: $('apiFormat'), endpoint: $('endpoint'), apiKey: $('apiKey'), rememberKey: $('rememberKey'), keepNaiMetadata: $('keepNaiMetadata'), toggleKeyBtn: $('toggleKeyBtn'), testBtn: $('testBtn'), saveSettingsBtn: $('saveSettingsBtn'), exportGalleryZipBtn: $('exportGalleryZipBtn'), exportConfigBtn: $('exportConfigBtn'), importConfigBtn: $('importConfigBtn'), importConfigFile: $('importConfigFile'), settingsStatus: $('settingsStatus'),
   deleteConfirmDialog: $('deleteConfirmDialog'), deleteConfirmTitle: $('deleteConfirmTitle'), deleteConfirmText: $('deleteConfirmText'), cancelDeleteBtn: $('cancelDeleteBtn'), confirmDeleteBtn: $('confirmDeleteBtn'),
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
@@ -285,13 +286,16 @@ function naiFetchBase(raw) {
 function updateEndpointUi() {
   if (els.apiFormat.value === 'nai' && !els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
 }
-function apiPresetLabel(item) {
+function apiPresetDefaultLabel(item) {
   try {
     const host = new URL(item.endpoint).host || item.endpoint;
     return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${host}`;
   } catch {
     return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${item.endpoint || '未命名'}`;
   }
+}
+function apiPresetLabel(item) {
+  return String(item?.name || '').trim() || apiPresetDefaultLabel(item);
 }
 function renderApiPresets() {
   if (!els.apiPresetSelect) return;
@@ -304,7 +308,9 @@ function renderApiPresets() {
     els.apiPresetSelect.appendChild(option);
   }
   els.apiPresetSelect.value = apiPresets.some(item => item.id === current) ? current : '';
-  if (els.deleteApiPresetBtn) els.deleteApiPresetBtn.disabled = !els.apiPresetSelect.value;
+  const hasCurrent = Boolean(els.apiPresetSelect.value);
+  if (els.renameApiPresetBtn) els.renameApiPresetBtn.disabled = !hasCurrent;
+  if (els.deleteApiPresetBtn) els.deleteApiPresetBtn.disabled = !hasCurrent;
 }
 function saveCurrentApiPreset() {
   const endpoint = normalizeBase(els.endpoint.value);
@@ -341,6 +347,31 @@ function applyApiPreset(id) {
   els.settingsStatus.textContent = `已切换到 ${apiPresetLabel(item)}`;
   setConnectionState(item.token ? 'ready' : '', item.token ? 'API 预设已载入' : 'API 预设已载入 · 等待 Token');
   renderApiPresets();
+}
+function openRenameApiPreset() {
+  const id = els.apiPresetSelect?.value;
+  const item = apiPresets.find(p => p.id === id);
+  if (!item) return;
+  els.renameApiPresetInput.value = String(item.name || '').trim() || apiPresetDefaultLabel(item);
+  els.renameApiPresetDialog.showModal();
+  requestAnimationFrame(() => { els.renameApiPresetInput.focus(); els.renameApiPresetInput.select(); });
+}
+function saveRenamedApiPreset(event) {
+  event?.preventDefault?.();
+  const id = els.apiPresetSelect?.value;
+  const item = apiPresets.find(p => p.id === id);
+  if (!item) { els.renameApiPresetDialog.close(); return; }
+  const name = els.renameApiPresetInput.value.trim();
+  if (!name) { els.renameApiPresetInput.focus(); return; }
+  item.name = name.slice(0,60);
+  item.updatedAt = Date.now();
+  saveJson(API_PRESETS_KEY, apiPresets);
+  renderApiPresets();
+  els.apiPresetSelect.value = id;
+  settings.apiPresetId = id;
+  saveJson(SETTINGS_KEY, settings);
+  els.renameApiPresetDialog.close();
+  showToast('API 预设名称已修改');
 }
 function deleteCurrentApiPreset() {
   const id = els.apiPresetSelect?.value;
@@ -2630,7 +2661,16 @@ els.saveAnchorBtn.addEventListener('click',()=>{
 });
 document.querySelectorAll('[data-close]').forEach(b=>b.addEventListener('click',()=>$(b.dataset.close)?.close()));
 
-els.apiPresetSelect?.addEventListener('change',()=>{const id=els.apiPresetSelect.value;if(id)applyApiPreset(id);else if(els.deleteApiPresetBtn)els.deleteApiPresetBtn.disabled=true;});
+els.apiPresetSelect?.addEventListener('change',()=>{
+  const id=els.apiPresetSelect.value;
+  if(id) applyApiPreset(id);
+  else {
+    if(els.renameApiPresetBtn) els.renameApiPresetBtn.disabled=true;
+    if(els.deleteApiPresetBtn) els.deleteApiPresetBtn.disabled=true;
+  }
+});
+els.renameApiPresetBtn?.addEventListener('click',openRenameApiPreset);
+els.renameApiPresetForm?.addEventListener('submit',saveRenamedApiPreset);
 els.deleteApiPresetBtn?.addEventListener('click',deleteCurrentApiPreset);
 els.apiFormat.addEventListener('change',()=>{updateEndpointUi();saveSettings();});
 els.toggleKeyBtn.addEventListener('click',()=>{const hidden=els.apiKey.type==='password';els.apiKey.type=hidden?'text':'password';els.toggleKeyBtn.textContent=hidden?'隐藏':'显示';});
