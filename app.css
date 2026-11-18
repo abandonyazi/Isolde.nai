@@ -766,3 +766,20 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
     max-width:none;
   }
 }
+
+
+/* v79: center Quick Words popup in the viewport */
+.scene-prompt-tools .scene-insert-wrap:first-child{position:static}
+.scene-prompt-head .quick-words-menu,
+.quick-words-menu{
+  position:fixed !important;
+  left:50% !important;
+  right:auto !important;
+  top:50% !important;
+  transform:translate(-50%,-50%) !important;
+  width:min(360px,calc(100vw - 36px)) !important;
+  max-width:calc(100vw - 36px) !important;
+  max-height:min(62vh,520px);
+  overflow:auto;
+  z-index:90;
+}
