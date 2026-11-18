@@ -25,9 +25,9 @@ const els = {
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
   quickWordsBtn: $('quickWordsBtn'), quickWordsMenu: $('quickWordsMenu'), quickWordsDialog: $('quickWordsDialog'),
   quickWordForm: $('quickWordForm'), quickWordId: $('quickWordId'), quickWordName: $('quickWordName'), quickWordPrompt: $('quickWordPrompt'), quickWordList: $('quickWordList'), cancelQuickWordEditBtn: $('cancelQuickWordEditBtn'), saveQuickWordBtn: $('saveQuickWordBtn'),
-  quickWordCategorySelect: $('quickWordCategorySelect'), addQuickWordCategoryBtn: $('addQuickWordCategoryBtn'), manageQuickWordCategoriesBtn: $('manageQuickWordCategoriesBtn'),
-  newQuickWordCategoryDialog: $('newQuickWordCategoryDialog'), newQuickWordCategoryForm: $('newQuickWordCategoryForm'), newQuickWordCategoryName: $('newQuickWordCategoryName'),
-  manageQuickWordCategoriesDialog: $('manageQuickWordCategoriesDialog'), quickWordCategoryList: $('quickWordCategoryList'),
+  quickWordCategorySelect: $('quickWordCategorySelect'), addQuickWordCategoryBtn: $('addQuickWordCategoryBtn'),
+  newQuickWordCategoryForm: $('newQuickWordCategoryForm'), newQuickWordCategoryName: $('newQuickWordCategoryName'),
+  quickWordCategoryList: $('quickWordCategoryList'),
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
@@ -895,6 +895,7 @@ function openQuickWordsManager() {
   ensureQuickWordActiveCategory();
   resetQuickWordEditor();
   renderQuickWordCategorySelect();
+  renderQuickWordCategoryManager();
   renderQuickWordList();
   els.quickWordsMenu?.classList.add('hidden');
   els.quickWordsDialog?.showModal();
@@ -960,7 +961,6 @@ function saveQuickWord(event) {
 }
 function openNewQuickWordCategory() {
   els.newQuickWordCategoryName.value='';
-  els.newQuickWordCategoryDialog?.showModal();
   requestAnimationFrame(()=>els.newQuickWordCategoryName?.focus());
 }
 function saveNewQuickWordCategory(event) {
@@ -970,8 +970,8 @@ function saveNewQuickWordCategory(event) {
   const existing=quickWordCategories.find(item=>item.name===name);
   if(existing){
     quickWordsActiveCategory=existing.id;
-    els.newQuickWordCategoryDialog.close();
-    renderQuickWordCategorySelect();renderQuickWordList();renderQuickWordsMenu();
+    renderQuickWordCategorySelect();renderQuickWordCategoryManager();renderQuickWordList();renderQuickWordsMenu();
+    els.newQuickWordCategoryName.value='';
     showToast('这个分类已经存在');
     return;
   }
@@ -979,8 +979,8 @@ function saveNewQuickWordCategory(event) {
   quickWordCategories.push(item);
   quickWordsActiveCategory=item.id;
   saveJson(QUICK_WORD_CATEGORIES_KEY,quickWordCategories);
-  els.newQuickWordCategoryDialog.close();
-  renderQuickWordCategorySelect();renderQuickWordList();renderQuickWordsMenu();
+  els.newQuickWordCategoryName.value='';
+  renderQuickWordCategorySelect();renderQuickWordCategoryManager();renderQuickWordList();renderQuickWordsMenu();
   showToast('分类已新建');
 }
 function renderQuickWordCategoryManager() {
@@ -1007,7 +1007,7 @@ function renderQuickWordCategoryManager() {
           if(quickWordsActiveCategory===category.id)quickWordsActiveCategory=quickWordCategories[0]?.id||'';
           saveJson(QUICK_WORDS_KEY,quickWords);
           saveJson(QUICK_WORD_CATEGORIES_KEY,quickWordCategories);
-          renderQuickWordCategoryManager();renderQuickWordCategorySelect();renderQuickWordList();renderQuickWordsMenu();
+          renderQuickWordCategoryManager();renderQuickWordCategorySelect();resetQuickWordEditor();renderQuickWordList();renderQuickWordsMenu();
           showToast('分类已删除');
         }
       });
@@ -1015,11 +1015,6 @@ function renderQuickWordCategoryManager() {
     row.append(info,del);els.quickWordCategoryList.appendChild(row);
   }
 }
-function openQuickWordCategoryManager() {
-  renderQuickWordCategoryManager();
-  els.manageQuickWordCategoriesDialog?.showModal();
-}
-
 function makeButton(text, cls, fn) {
   const b = document.createElement('button');
   b.type='button'; b.textContent=text; b.className=cls; b.addEventListener('click',fn); return b;
@@ -2888,11 +2883,10 @@ els.quickWordForm?.addEventListener('submit',saveQuickWord);
 els.cancelQuickWordEditBtn?.addEventListener('click',()=>resetQuickWordEditor());
 els.quickWordCategorySelect?.addEventListener('change',()=>{
   quickWordsActiveCategory=els.quickWordCategorySelect.value;
-  resetQuickWordEditor();renderQuickWordList();renderQuickWordsMenu();
+  resetQuickWordEditor();renderQuickWordCategoryManager();renderQuickWordList();renderQuickWordsMenu();
 });
-els.addQuickWordCategoryBtn?.addEventListener('click',openNewQuickWordCategory);
+els.addQuickWordCategoryBtn?.addEventListener('click',()=>{els.newQuickWordCategoryName.value='';els.newQuickWordCategoryName.focus();});
 els.newQuickWordCategoryForm?.addEventListener('submit',saveNewQuickWordCategory);
-els.manageQuickWordCategoriesBtn?.addEventListener('click',openQuickWordCategoryManager);
 els.insertAnchorPromptsBtn?.addEventListener('pointerdown',rememberSceneInsertSelection);
 els.insertAnchorPromptsBtn?.addEventListener('click',(event)=>{event.stopPropagation();els.quickWordsMenu?.classList.add('hidden');renderInsertAnchorMenu();});
 els.insertAnchorMenu?.addEventListener('pointerdown',(event)=>event.stopPropagation());
