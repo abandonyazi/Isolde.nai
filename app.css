@@ -783,3 +783,21 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   overflow:auto;
   z-index:90;
 }
+
+
+/* v80: center Quick Words horizontally, keep it below the prompt header */
+.scene-prompt-head{position:relative}
+.scene-prompt-tools .scene-insert-wrap:first-child{position:static}
+.scene-prompt-head .quick-words-menu,
+.quick-words-menu{
+  position:absolute !important;
+  left:50% !important;
+  right:auto !important;
+  top:calc(100% + 8px) !important;
+  transform:translateX(-50%) !important;
+  width:min(360px,calc(100vw - 40px)) !important;
+  max-width:calc(100vw - 40px) !important;
+  max-height:min(56vh,480px);
+  overflow:auto;
+  z-index:90;
+}
