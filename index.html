@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=50" />
+  <link rel="stylesheet" href="./app.css?v=51" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -550,15 +550,19 @@
           </label>
           <button id="addQuickWordCategoryBtn" class="secondary-btn quick-category-add-btn" type="button">＋ 新建</button>
         </div>
-        <form id="newQuickWordCategoryForm" class="quick-category-create-row">
+        <form id="newQuickWordCategoryForm" class="quick-category-create-row hidden">
           <input id="newQuickWordCategoryName" maxlength="20" autocomplete="off" placeholder="输入新分类名称" />
-          <button class="secondary-btn" type="submit">添加分类</button>
+          <button class="secondary-btn" type="submit">添加</button>
         </form>
         <div id="quickWordCategoryList" class="quick-category-manage-list"></div>
       </section>
 
       <form id="quickWordForm" class="quick-word-editor">
         <input id="quickWordId" type="hidden" />
+        <label class="field">
+          <span>归入分类</span>
+          <select id="quickWordFormCategorySelect"></select>
+        </label>
         <label class="field"><span>显示名称</span><input id="quickWordName" maxlength="24" placeholder="例如：特写" /></label>
         <label class="field"><span>插入内容</span><textarea id="quickWordPrompt" rows="3" placeholder="例如：close-up, face focus"></textarea></label>
         <div class="settings-actions quick-word-editor-actions">
@@ -678,6 +682,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=77"></script>
+  <script type="module" src="./app.js?v=78"></script>
 </body>
 </html>
