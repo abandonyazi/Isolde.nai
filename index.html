@@ -269,7 +269,10 @@
           <h2>图库</h2>
           <p id="galleryCount" class="subtle">0 张</p>
         </div>
-        <button id="clearGalleryBtn" class="text-btn danger" type="button">清空图库</button>
+        <div class="page-head-actions gallery-head-actions">
+          <button id="batchDeleteGalleryBtn" class="text-btn danger" type="button">批量删除</button>
+          <button id="clearGalleryBtn" class="text-btn danger" type="button">清空图库</button>
+        </div>
       </div>
       <div id="galleryGrid" class="gallery-grid"></div>
     </section>
@@ -283,6 +286,16 @@
           </div>
         </div>
 
+        <div class="api-preset-row">
+          <label class="field">
+            <span>API 预设</span>
+            <select id="apiPresetSelect">
+              <option value="">选择已保存的 API 预设</option>
+            </select>
+          </label>
+          <button id="deleteApiPresetBtn" class="text-btn danger api-preset-delete" type="button" disabled>删除当前预设</button>
+        </div>
+
         <label class="field">
           <span>接口格式</span>
           <select id="apiFormat">
@@ -294,7 +307,6 @@
         <label class="field">
           <span>接口地址</span>
           <input id="endpoint" type="url" autocomplete="off" value="https://image.novelai.net" />
-          <small id="endpointHint"></small>
         </label>
 
         <label class="field">
@@ -493,6 +505,19 @@
     </section>
   </main>
 
+  <dialog id="deleteConfirmDialog" class="modal">
+    <div class="modal-panel delete-confirm-panel">
+      <div class="modal-head">
+        <h2 id="deleteConfirmTitle">确认删除？</h2>
+      </div>
+      <p id="deleteConfirmText" class="delete-confirm-text"></p>
+      <div class="settings-actions">
+        <button id="cancelDeleteBtn" class="secondary-btn" type="button">取消</button>
+        <button id="confirmDeleteBtn" class="primary-btn delete-confirm-btn" type="button">确认删除</button>
+      </div>
+    </div>
+  </dialog>
+
   <dialog id="presetDialog" class="modal">
     <form id="presetForm" class="modal-panel">
       <div class="modal-head">
@@ -571,6 +596,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=70"></script>
+  <script type="module" src="./app.js?v=71"></script>
 </body>
 </html>
