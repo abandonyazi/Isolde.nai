@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=51" />
+  <link rel="stylesheet" href="./app.css?v=52" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -537,27 +537,19 @@
         <div><p class="kicker">Quick Words</p><h2>管理快捷词</h2></div>
         <button class="icon-btn" type="button" data-close="quickWordsDialog" aria-label="关闭">×</button>
       </div>
-      <p class="quick-words-note">先选分类，再往这个分类里添加快捷词。插入时会自动补逗号分隔。</p>
-
-      <section class="quick-category-inline">
-        <div class="quick-category-inline-head">
-          <strong>分类设置</strong>
-        </div>
-        <div class="quick-category-toolbar">
-          <label class="field quick-category-select-field">
-            <span>当前分类</span>
-            <select id="quickWordCategorySelect"></select>
-          </label>
-          <button id="addQuickWordCategoryBtn" class="secondary-btn quick-category-add-btn" type="button">＋ 新建</button>
+      <section class="quick-category-inline compact">
+        <div class="quick-category-main-actions">
+          <button id="addQuickWordCategoryBtn" class="secondary-btn" type="button">＋ 新建分类</button>
+          <button id="manageQuickWordCategoriesBtn" class="secondary-btn" type="button">管理分类</button>
         </div>
         <form id="newQuickWordCategoryForm" class="quick-category-create-row hidden">
           <input id="newQuickWordCategoryName" maxlength="20" autocomplete="off" placeholder="输入新分类名称" />
           <button class="secondary-btn" type="submit">添加</button>
         </form>
-        <div id="quickWordCategoryList" class="quick-category-manage-list"></div>
+        <div id="quickWordCategoryList" class="quick-category-manage-list hidden"></div>
       </section>
 
-      <form id="quickWordForm" class="quick-word-editor">
+      <form id="quickWordForm" class="quick-word-editor compact-editor">
         <input id="quickWordId" type="hidden" />
         <label class="field">
           <span>归入分类</span>
@@ -682,6 +674,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=79"></script>
+  <script type="module" src="./app.js?v=80"></script>
 </body>
 </html>
