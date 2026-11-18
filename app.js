@@ -19,7 +19,7 @@ const els = {
   scenePrompt: $('scenePrompt'), extraNegative: $('extraNegative'),
   qualityTags: $('qualityTags'), qualityPosition: $('qualityPosition'),
   assembledPrompt: $('assembledPrompt'), assembledNegative: $('assembledNegative'),
-  aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), seed: $('seed'),
+  aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), guidanceRescale: $('guidanceRescale'), guidanceRescaleValue: $('guidanceRescaleValue'), guidanceRescaleHint: $('guidanceRescaleHint'), seed: $('seed'),
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'), insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
@@ -258,6 +258,20 @@ function setConnectionState(kind, text) {
 function clampNumber(v,min,max,fallback) {
   const n = Number(v); return Number.isFinite(n) ? Math.max(min,Math.min(max,n)) : fallback;
 }
+function updateGuidanceRescaleUi() {
+  if (!els.guidanceRescale) return;
+  const value = clampNumber(els.guidanceRescale.value,0,1,.32);
+  els.guidanceRescale.value = String(value);
+  if (els.guidanceRescaleValue) els.guidanceRescaleValue.textContent = value.toFixed(2);
+  const unsupported = els.model?.value?.includes('full-medium');
+  els.guidanceRescale.disabled = Boolean(unsupported);
+  if (els.guidanceRescaleHint) {
+    els.guidanceRescaleHint.textContent = unsupported
+      ? 'V5 Full Medium 不支持 Prompt Guidance Rescale。'
+      : '高 CFG 时缓和过饱和和过硬的颜色边缘。';
+    els.guidanceRescaleHint.classList.toggle('warning',Boolean(unsupported));
+  }
+}
 function randomSeed() {
   const a = new Uint32Array(1);
   if (crypto?.getRandomValues) { crypto.getRandomValues(a); return String(a[0]); }
@@ -432,7 +446,9 @@ function loadState() {
   els.width.value = settings.width || 1024;
   els.height.value = settings.height || 1024;
   els.steps.value = settings.steps || 28;
-  els.cfg.value = settings.cfg || 5;
+  els.cfg.value = settings.cfg ?? 5;
+  els.guidanceRescale.value = String(clampNumber(settings.guidanceRescale,0,1,.32));
+  updateGuidanceRescaleUi();
   els.seed.value = '';
   els.qualityTags.value = settings.qualityTags || 'masterpiece, best quality, very aesthetic';
   els.qualityPosition.value = settings.qualityPosition || 'prefix';
@@ -471,7 +487,7 @@ function saveSettings() {
     rememberKey: els.rememberKey.checked,
     model: els.model.value, sampler: els.sampler.value,
     width: Number(els.width.value), height: Number(els.height.value),
-    steps: Number(els.steps.value), cfg: Number(els.cfg.value),
+    steps: Number(els.steps.value), cfg: Number(els.cfg.value), guidanceRescale: Number(els.guidanceRescale.value),
     qualityTags: els.qualityTags.value.trim(),
     qualityPosition: els.qualityPosition.value,
     scenePrompt: els.scenePrompt.value,
@@ -1125,7 +1141,7 @@ function buildNaiPayload(seed=null,promptOverride=null,sizeOverride=null) {
   if (seed !== null && seed !== undefined && String(seed).trim() !== '') {
     params.seed = Number(seed);
   }
-  if (!model.includes('full-medium')) params.cfg_rescale=0;
+  if (!model.includes('full-medium')) params.cfg_rescale=clampNumber(els.guidanceRescale.value,0,1,.32);
   return {input:positive,model,action:'generate',use_new_shared_trial:true,parameters:params};
 }
 function buildOpenAiBody(naiBody) {const p=naiBody.parameters; const copy={...p};
@@ -1187,7 +1203,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
       model:els.model.value,sampler:els.sampler.value,width:naiBody.parameters.width,height:naiBody.parameters.height,
-      steps:Number(els.steps.value),cfg:Number(els.cfg.value),
+      steps:Number(els.steps.value),cfg:Number(els.cfg.value),cfgRescale:Number(els.guidanceRescale.value),
       referenceEnabled:els.referenceEnabled.checked,referenceMode:els.referenceMode.value,referenceStrength:Number(els.referenceStrength.value),referenceFidelity:Number(els.referenceFidelity.value),referenceName:currentReferenceAsset?.name||'',
       vibeEnabled:els.vibeEnabled.checked,vibeStrength:Number(els.vibeStrength.value),vibeInformation:Number(els.vibeInformation.value),vibeName:currentVibeAsset?.name||'',
       createdAt:Date.now()
@@ -2131,6 +2147,8 @@ function applyGalleryMeta(item){
   if(item.model) els.model.value=item.model;if(item.sampler)els.sampler.value=item.sampler;
   if(item.width)els.width.value=item.width;if(item.height)els.height.value=item.height;
   if(item.steps)els.steps.value=item.steps;if(item.cfg!=null)els.cfg.value=item.cfg;
+  if(item.cfgRescale!=null)els.guidanceRescale.value=String(clampNumber(item.cfgRescale,0,1,.32));
+  updateGuidanceRescaleUi();
   if(item.referenceMode)els.referenceMode.value=item.referenceMode;
   if(item.referenceStrength!=null)els.referenceStrength.value=String(item.referenceStrength);
   if(item.referenceFidelity!=null)els.referenceFidelity.value=String(item.referenceFidelity);
@@ -2593,7 +2611,9 @@ els.qualityTags.addEventListener('input',updateAssembly);
 els.qualityPosition.addEventListener('change',updateAssembly);
 els.aspect.addEventListener('change',()=>setAspect(els.aspect.value));
 for(const id of ['sampler','steps','cfg']) els[id].addEventListener('change',saveSettings);
-els.model.addEventListener('change',()=>{updateReferenceModelHint();saveSettings();});
+els.guidanceRescale?.addEventListener('input',()=>{updateGuidanceRescaleUi();});
+els.guidanceRescale?.addEventListener('change',saveSettings);
+els.model.addEventListener('change',()=>{updateReferenceModelHint();updateGuidanceRescaleUi();saveSettings();});
 for(const id of ['width','height']) els[id].addEventListener('change',()=>{els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));saveSettings();});
 els.seed.addEventListener('change',saveSettings);
 els.clearWorkbenchBtn.addEventListener('click',()=>{els.scenePrompt.value='';els.extraNegative.value='';updateAssembly();els.scenePrompt.focus();});
