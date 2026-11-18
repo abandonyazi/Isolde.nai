@@ -652,3 +652,10 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .guidance-rescale-control input[type="range"]{width:100%;margin-top:10px;accent-color:var(--accent)}
 .guidance-rescale-control input[type="range"]:disabled{opacity:.4}
 .guidance-rescale-control small.warning{color:var(--danger)}
+
+
+/* v75: Guidance Rescale uses the same slider layout as watermark opacity */
+.guidance-rescale-control{padding-top:0;margin-top:10px}
+.guidance-rescale-control strong{min-width:40px}
+.guidance-rescale-hint{margin-top:7px}
+.guidance-rescale-hint.warning{color:var(--danger)}
