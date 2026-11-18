@@ -3,10 +3,10 @@
   "loading_order": 80,
   "requires": [],
   "optional": [],
-  "js": "st-bootstrap.js?ver=0.9.35",
-  "css": "st-extension.css?ver=0.9.35",
+  "js": "st-bootstrap.js?ver=0.9.36",
+  "css": "st-extension.css?ver=0.9.36",
   "author": "abandonyazi",
-  "version": "0.9.35",
+  "version": "0.9.36",
   "homePage": "https://github.com/abandonyazi/Isolde.nai",
   "auto_update": true,
   "description": "Isolde.nai for SillyTavern: multi-source scene understanding, native NAI character prompts, Chatu8 preset migration, opt-in inline generation, shadow-host UI, wand/settings fallbacks, and the full NAI workbench."
