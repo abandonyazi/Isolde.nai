@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=43" />
+  <link rel="stylesheet" href="./app.css?v=44" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -95,9 +95,15 @@
         <div class="field">
           <div class="field-head scene-prompt-head">
             <span>画面词</span>
-            <div class="scene-insert-wrap">
-              <button id="insertAnchorPromptsBtn" class="text-btn compact scene-insert-btn" type="button">插入角色词</button>
-              <div id="insertAnchorMenu" class="scene-insert-menu hidden"></div>
+            <div class="scene-prompt-tools">
+              <div class="scene-insert-wrap">
+                <button id="quickWordsBtn" class="text-btn compact scene-insert-btn" type="button">快捷词</button>
+                <div id="quickWordsMenu" class="quick-words-menu hidden"></div>
+              </div>
+              <div class="scene-insert-wrap">
+                <button id="insertAnchorPromptsBtn" class="text-btn compact scene-insert-btn" type="button">插入角色词</button>
+                <div id="insertAnchorMenu" class="scene-insert-menu hidden"></div>
+              </div>
             </div>
           </div>
           <textarea id="scenePrompt" rows="8" placeholder="只写这张图的构图、动作、表情、服装、背景……；可写 [角色名] 自动注入已保存的角色锚点词"></textarea>
@@ -525,6 +531,26 @@
     </section>
   </main>
 
+  <dialog id="quickWordsDialog" class="modal">
+    <div class="modal-panel quick-words-panel">
+      <div class="modal-head">
+        <div><p class="kicker">Quick Words</p><h2>管理快捷词</h2></div>
+        <button class="icon-btn" type="button" data-close="quickWordsDialog" aria-label="关闭">×</button>
+      </div>
+      <p class="quick-words-note">保存一小段常用提示词。工作台点一下就插入画面词当前光标位置。</p>
+      <form id="quickWordForm" class="quick-word-editor">
+        <input id="quickWordId" type="hidden" />
+        <label class="field"><span>显示名称</span><input id="quickWordName" maxlength="24" placeholder="例如：特写 / 哭哭 / 仰拍" /></label>
+        <label class="field"><span>插入内容</span><textarea id="quickWordPrompt" rows="3" placeholder="例如：close-up, face focus"></textarea></label>
+        <div class="settings-actions quick-word-editor-actions">
+          <button id="cancelQuickWordEditBtn" class="secondary-btn hidden" type="button">取消编辑</button>
+          <button class="primary-btn" type="submit">保存快捷词</button>
+        </div>
+      </form>
+      <div id="quickWordList" class="quick-word-list"></div>
+    </div>
+  </dialog>
+
   <dialog id="renameApiPresetDialog" class="modal">
     <form id="renameApiPresetForm" class="modal-panel api-preset-rename-panel">
       <div class="modal-head">
@@ -633,6 +659,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=73"></script>
+  <script type="module" src="./app.js?v=74"></script>
 </body>
 </html>
