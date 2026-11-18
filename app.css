@@ -610,3 +610,17 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .delete-confirm-text{margin:14px 0 4px;color:var(--muted);font-size:14px;line-height:1.6}
 .delete-confirm-btn{background:var(--danger)}
 @media(max-width:430px){.api-preset-row{grid-template-columns:1fr}.api-preset-delete{justify-self:end;margin-bottom:0}.gallery-head-actions .text-btn{padding:7px 5px;font-size:12px}}
+
+
+/* v72: editable API preset names */
+.api-preset-field-head{align-items:center;margin-bottom:6px}
+.api-preset-field-head>span{margin-bottom:0}
+.api-preset-rename-btn{
+  width:30px;height:30px;display:grid;place-items:center;flex:0 0 auto;
+  border:0;border-radius:9px;background:transparent;color:var(--accent-strong);
+  padding:5px;cursor:pointer;
+}
+.api-preset-rename-btn svg{width:18px;height:18px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+.api-preset-rename-btn:active{background:var(--accent-soft)}
+.api-preset-rename-btn:disabled{opacity:.28;cursor:default}
+.api-preset-rename-panel{max-width:430px;margin:auto}
