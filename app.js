@@ -22,7 +22,7 @@ const els = {
   assembledPrompt: $('assembledPrompt'), assembledNegative: $('assembledNegative'),
   aspect: $('aspect'), model: $('model'), sampler: $('sampler'), width: $('width'), height: $('height'), steps: $('steps'), cfg: $('cfg'), guidanceRescale: $('guidanceRescale'), guidanceRescaleValue: $('guidanceRescaleValue'), guidanceRescaleHint: $('guidanceRescaleHint'), seed: $('seed'),
   clearWorkbenchBtn: $('clearWorkbenchBtn'), randomSeedBtn: $('randomSeedBtn'), jumpAnchorsBtn: $('jumpAnchorsBtn'),
-  quickWordsBtn: $('quickWordsBtn'), quickWordsMenu: $('quickWordsMenu'), quickWordsDialog: $('quickWordsDialog'), quickWordForm: $('quickWordForm'), quickWordId: $('quickWordId'), quickWordName: $('quickWordName'), quickWordPrompt: $('quickWordPrompt'), quickWordList: $('quickWordList'), cancelQuickWordEditBtn: $('cancelQuickWordEditBtn'),
+  quickWordsBtn: $('quickWordsBtn'), quickWordsMenu: $('quickWordsMenu'), quickWordsDialog: $('quickWordsDialog'), quickWordForm: $('quickWordForm'), quickWordId: $('quickWordId'), quickWordCategory: $('quickWordCategory'), quickWordName: $('quickWordName'), quickWordPrompt: $('quickWordPrompt'), quickWordList: $('quickWordList'), cancelQuickWordEditBtn: $('cancelQuickWordEditBtn'),
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
@@ -46,6 +46,7 @@ let presets = [];
 let anchors = [];
 let apiPresets = [];
 let quickWords = [];
+let quickWordsActiveCategory = '';
 let selectedAnchorIds = [];
 let galleryBatchMode = false;
 let selectedGalleryIds = new Set();
@@ -423,18 +424,24 @@ function loadState() {
   presets = loadJson(PRESETS_KEY, []);
   anchors = loadJson(ANCHORS_KEY, []);
   apiPresets = loadJson(API_PRESETS_KEY, []);
-  const quickWordsStored = localStorage.getItem(QUICK_WORDS_KEY);
   quickWords = loadJson(QUICK_WORDS_KEY, []);
-  if (quickWordsStored === null) {
-    quickWords = [
-      {id:uid('qw'),name:'特写',prompt:'close-up, face focus'},
-      {id:uid('qw'),name:'全身',prompt:'full body'},
-      {id:uid('qw'),name:'哭哭',prompt:'crying, teary eyes'},
-      {id:uid('qw'),name:'仰拍',prompt:'low angle'},
-      {id:uid('qw'),name:'回头',prompt:'looking back over shoulder'},
-      {id:uid('qw'),name:'伸手',prompt:'reaching toward camera'}
-    ];
+  const oldSamples = new Map([
+    ['特写','close-up, face focus'],
+    ['全身','full body'],
+    ['哭哭','crying, teary eyes'],
+    ['仰拍','low angle'],
+    ['回头','looking back over shoulder'],
+    ['伸手','reaching toward camera']
+  ]);
+  const migratedQuickWords = quickWords.filter(item => {
+    const sample = oldSamples.get(String(item?.name||'').trim());
+    return !(sample && String(item?.prompt||'').trim() === sample && !String(item?.category||'').trim());
+  }).map(item => ({...item, category:String(item?.category||'未分类').trim()||'未分类'}));
+  if (migratedQuickWords.length !== quickWords.length || migratedQuickWords.some((item,i)=>item.category !== quickWords[i]?.category)) {
+    quickWords = migratedQuickWords;
     saveJson(QUICK_WORDS_KEY, quickWords);
+  } else {
+    quickWords = migratedQuickWords;
   }
   if (!presets.length) {
     presets = [{
@@ -775,6 +782,14 @@ function renderInsertAnchorMenu() {
   menu.classList.toggle('hidden',!menu.classList.contains('hidden'));
 }
 
+function quickWordCategories() {
+  const seen=new Set(),out=[];
+  for(const item of quickWords){
+    const category=String(item?.category||'未分类').trim()||'未分类';
+    if(!seen.has(category)){seen.add(category);out.push(category);}
+  }
+  return out;
+}
 function insertTextAtSceneCaret(text,label='快捷词') {
   const value=String(text||'').trim().replace(/^[,\s]+|[,\s]+$/g,'');
   if(!value)return;
@@ -783,10 +798,13 @@ function insertTextAtSceneCaret(text,label='快捷词') {
   const saved=sceneInsertSelection||{};
   const start=Number.isInteger(saved.start)?Math.min(saved.start,current.length):(Number.isInteger(textarea.selectionStart)?textarea.selectionStart:current.length);
   const end=Number.isInteger(saved.end)?Math.min(saved.end,current.length):(Number.isInteger(textarea.selectionEnd)?textarea.selectionEnd:start);
-  const before=current.slice(0,start),after=current.slice(end);
-  const inserted=`${before&&!/[\s,]$/.test(before)?', ':''}${value}${after&&!/^[\s,]/.test(after)?', ':''}`;
+  const rawBefore=current.slice(0,start);
+  const before=rawBefore.replace(/\s*$/,'');
+  const after=current.slice(end).replace(/^[,\s]+/,'');
+  const prefix=before?(before.endsWith(',')?' ':', '):'';
+  const inserted=`${prefix}${value}, `;
   textarea.value=before+inserted+after;
-  const caret=before.length+inserted.length;
+  const caret=(before+inserted).length;
   textarea.focus();textarea.setSelectionRange(caret,caret);
   sceneInsertSelection={start:caret,end:caret};
   els.quickWordsMenu?.classList.add('hidden');
@@ -796,6 +814,7 @@ function insertTextAtSceneCaret(text,label='快捷词') {
 function resetQuickWordEditor() {
   if(!els.quickWordForm)return;
   els.quickWordId.value='';
+  els.quickWordCategory.value='';
   els.quickWordName.value='';
   els.quickWordPrompt.value='';
   els.cancelQuickWordEditBtn?.classList.add('hidden');
@@ -804,21 +823,27 @@ function renderQuickWordList() {
   if(!els.quickWordList)return;
   els.quickWordList.innerHTML='';
   if(!quickWords.length){
-    const note=document.createElement('div');note.className='empty-note';note.textContent='还没有快捷词';els.quickWordList.appendChild(note);return;
+    const note=document.createElement('div');note.className='empty-note';note.textContent='还没有快捷词，先建一个自己的分类吧';els.quickWordList.appendChild(note);return;
   }
   for(const item of quickWords){
     const row=document.createElement('div');row.className='quick-word-row';
     const text=document.createElement('div');text.className='quick-word-row-text';
+    const meta=document.createElement('div');meta.className='quick-word-row-meta';
+    const category=document.createElement('span');category.className='quick-word-category-badge';category.textContent=item.category||'未分类';
     const strong=document.createElement('strong');strong.textContent=item.name;
+    meta.append(category,strong);
     const span=document.createElement('span');span.textContent=item.prompt;
-    text.append(strong,span);
+    text.append(meta,span);
     const actions=document.createElement('div');actions.className='quick-word-row-actions';
     actions.appendChild(makeButton('编辑','small-btn',()=>{
-      els.quickWordId.value=item.id;els.quickWordName.value=item.name;els.quickWordPrompt.value=item.prompt;
+      els.quickWordId.value=item.id;els.quickWordCategory.value=item.category||'';els.quickWordName.value=item.name;els.quickWordPrompt.value=item.prompt;
       els.cancelQuickWordEditBtn.classList.remove('hidden');els.quickWordName.focus();
     }));
     actions.appendChild(makeButton('删除','small-btn danger',()=>{
-      quickWords=quickWords.filter(q=>q.id!==item.id);saveJson(QUICK_WORDS_KEY,quickWords);renderQuickWordList();renderQuickWordsMenu();showToast('快捷词已删除');
+      quickWords=quickWords.filter(q=>q.id!==item.id);
+      saveJson(QUICK_WORDS_KEY,quickWords);
+      if(!quickWordCategories().includes(quickWordsActiveCategory)) quickWordsActiveCategory=quickWordCategories()[0]||'';
+      renderQuickWordList();renderQuickWordsMenu();showToast('快捷词已删除');
     }));
     row.append(text,actions);els.quickWordList.appendChild(row);
   }
@@ -829,19 +854,39 @@ function openQuickWordsManager() {
 function renderQuickWordsMenu() {
   const menu=els.quickWordsMenu;if(!menu)return;
   menu.innerHTML='';
+  const categories=quickWordCategories();
+  if(categories.length && !categories.includes(quickWordsActiveCategory)) quickWordsActiveCategory=categories[0];
+  if(!categories.length) quickWordsActiveCategory='';
+
+  const categoryBar=document.createElement('div');categoryBar.className='quick-word-categories';
+  for(const category of categories){
+    const button=document.createElement('button');
+    button.type='button';button.className='quick-word-category';button.textContent=category;
+    button.classList.toggle('selected',category===quickWordsActiveCategory);
+    button.addEventListener('click',(event)=>{event.stopPropagation();quickWordsActiveCategory=category;renderQuickWordsMenu();});
+    categoryBar.appendChild(button);
+  }
+
+  const body=document.createElement('div');body.className='quick-word-menu-body';
   const chips=document.createElement('div');chips.className='quick-word-chips';
-  if(quickWords.length){
-    for(const item of quickWords){
+  const visible=quickWords.filter(item=>(String(item.category||'未分类').trim()||'未分类')===quickWordsActiveCategory);
+  if(visible.length){
+    for(const item of visible){
       const b=document.createElement('button');b.type='button';b.className='quick-word-chip';b.textContent=item.name;
       b.addEventListener('click',(event)=>{event.stopPropagation();insertTextAtSceneCaret(item.prompt,item.name);});
       chips.appendChild(b);
     }
   }else{
-    const note=document.createElement('span');note.className='quick-word-empty';note.textContent='还没有快捷词';chips.appendChild(note);
+    const note=document.createElement('span');note.className='quick-word-empty';note.textContent=categories.length?'这个分类还没有快捷词':'还没有快捷词';
+    chips.appendChild(note);
   }
+  body.appendChild(chips);
+
   const manage=document.createElement('button');manage.type='button';manage.className='quick-word-manage';manage.textContent='＋ 管理快捷词';
   manage.addEventListener('click',(event)=>{event.stopPropagation();openQuickWordsManager();});
-  menu.append(chips,manage);
+
+  if(categories.length) menu.append(categoryBar,body,manage);
+  else menu.append(body,manage);
 }
 function toggleQuickWordsMenu() {
   renderQuickWordsMenu();
@@ -850,14 +895,19 @@ function toggleQuickWordsMenu() {
 }
 function saveQuickWord(event) {
   event?.preventDefault?.();
-  const name=els.quickWordName.value.trim(),prompt=els.quickWordPrompt.value.trim();
+  const category=els.quickWordCategory.value.trim();
+  const name=els.quickWordName.value.trim();
+  const prompt=els.quickWordPrompt.value.trim().replace(/[,\s]+$/g,'');
+  if(!category){els.quickWordCategory.focus();return;}
   if(!name){els.quickWordName.focus();return;}
   if(!prompt){els.quickWordPrompt.focus();return;}
   const id=els.quickWordId.value||uid('qw');
-  const item={id,name:name.slice(0,24),prompt,updatedAt:Date.now()};
+  const item={id,category:category.slice(0,20),name:name.slice(0,24),prompt,updatedAt:Date.now()};
   const existing=quickWords.findIndex(q=>q.id===id);
   if(existing>=0)quickWords[existing]={...quickWords[existing],...item};else quickWords.unshift(item);
-  saveJson(QUICK_WORDS_KEY,quickWords);resetQuickWordEditor();renderQuickWordList();renderQuickWordsMenu();showToast('快捷词已保存');
+  quickWordsActiveCategory=item.category;
+  saveJson(QUICK_WORDS_KEY,quickWords);
+  resetQuickWordEditor();renderQuickWordList();renderQuickWordsMenu();showToast('快捷词已保存');
 }
 
 function makeButton(text, cls, fn) {
