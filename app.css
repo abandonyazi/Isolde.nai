@@ -876,3 +876,8 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   .quick-category-inline .quick-category-toolbar{grid-template-columns:minmax(0,1fr) auto}
   .quick-category-create-row{grid-template-columns:1fr auto}
 }
+
+
+/* v83: choose existing category when saving a Quick Word */
+.quick-category-create-row.hidden{display:none !important}
+.quick-word-editor > .field:first-of-type{margin-top:12px}
