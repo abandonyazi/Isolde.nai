@@ -624,3 +624,21 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .api-preset-rename-btn:active{background:var(--accent-soft)}
 .api-preset-rename-btn:disabled{opacity:.28;cursor:default}
 .api-preset-rename-panel{max-width:430px;margin:auto}
+
+
+/* v73: keep gallery actions pinned to the right on mobile */
+.page-head .gallery-head-actions{
+  width:auto !important;
+  flex:0 0 auto;
+  margin-left:auto;
+  justify-content:flex-end !important;
+  align-self:flex-start;
+  flex-wrap:nowrap;
+}
+@media(max-width:560px){
+  .page-head .gallery-head-actions{
+    width:auto !important;
+    margin-left:auto;
+    justify-content:flex-end !important;
+  }
+}
