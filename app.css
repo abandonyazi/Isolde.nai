@@ -593,3 +593,20 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 @media (max-width:430px) {
   .gallery-export-actions { grid-template-columns:1fr 1fr; }
 }
+
+
+/* v71: API presets + safer gallery deletion */
+.api-preset-row{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:10px;align-items:end}
+.api-preset-row .field{margin-top:13px}
+.api-preset-delete{margin-bottom:6px;white-space:nowrap}
+.gallery-head-actions{gap:2px;flex-wrap:nowrap}
+.gallery-card{position:relative}
+.gallery-card.gallery-batch-mode .gallery-actions{display:none}
+.gallery-card.gallery-selected .gallery-image-btn img{filter:grayscale(1);opacity:.42}
+.gallery-card.gallery-selected .gallery-meta{opacity:.5}
+.gallery-card.gallery-selected::after{content:"";position:absolute;inset:0;background:rgba(54,66,78,.18);pointer-events:none;z-index:2}
+.gallery-selection-cancel{position:absolute;z-index:4;top:10px;right:10px;min-height:34px;padding:0 13px;border:1px solid rgba(255,255,255,.7);border-radius:999px;background:rgba(255,255,255,.92);color:var(--text);font-size:12px;font-weight:650;box-shadow:0 4px 14px rgba(36,52,68,.14)}
+.delete-confirm-panel{max-width:420px;margin:auto}
+.delete-confirm-text{margin:14px 0 4px;color:var(--muted);font-size:14px;line-height:1.6}
+.delete-confirm-btn{background:var(--danger)}
+@media(max-width:430px){.api-preset-row{grid-template-columns:1fr}.api-preset-delete{justify-self:end;margin-bottom:0}.gallery-head-actions .text-btn{padding:7px 5px;font-size:12px}}
