@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=52" />
+  <link rel="stylesheet" href="./app.css?v=53" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -90,6 +90,7 @@
             <button id="jumpAnchorsBtn" class="text-btn compact" type="button">管理</button>
           </div>
           <div id="anchorPicker" class="chip-picker"></div>
+          <div id="workbenchOutfitPicker" class="workbench-outfit-picker hidden"></div>
         </div>
 
         <div class="field">
@@ -275,7 +276,10 @@
           <h2>角色锚点</h2>
           <p class="subtle">一人一条锚点。画面词里写 [角色名] 会自动注入对应锚点；也仍可在工作台直接勾选角色。</p>
         </div>
-        <button id="addAnchorBtn" class="primary-btn" type="button">新增角色</button>
+        <div class="page-head-actions anchor-page-actions">
+          <button id="addOutfitBtn" class="secondary-btn" type="button">+ 服设</button>
+          <button id="addAnchorBtn" class="primary-btn" type="button">新增角色</button>
+        </div>
       </div>
       <div id="anchorList" class="library-list"></div>
     </section>
@@ -666,6 +670,12 @@
         <span>角色锚点词</span>
         <textarea id="anchorPrompt" rows="9" placeholder="1girl, long straight black hair, ..."></textarea>
       </label>
+      <section class="anchor-outfit-editor">
+        <div class="field-head">
+          <span>当前角色的服设</span>
+        </div>
+        <div id="anchorOutfitList" class="anchor-outfit-list"></div>
+      </section>
       <div class="settings-actions">
         <button class="secondary-btn" type="button" data-close="anchorDialog">取消</button>
         <button id="saveAnchorBtn" class="primary-btn" type="button">保存角色</button>
@@ -673,7 +683,35 @@
     </form>
   </dialog>
 
+  <dialog id="outfitDialog" class="modal outfit-modal">
+    <form id="outfitForm" class="modal-panel outfit-modal-panel" onsubmit="return false">
+      <div class="modal-head">
+        <div>
+          <p class="kicker">Outfit</p>
+          <h2>新增服设</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close="outfitDialog">×</button>
+      </div>
+      <label class="field">
+        <span>服设名称</span>
+        <input id="outfitName" placeholder="例如：冬季校服 / 黑色西装" />
+      </label>
+      <label class="field">
+        <span>服装词</span>
+        <textarea id="outfitPrompt" rows="6" placeholder="只写可见服装，例如：white shirt, black trousers, ..."></textarea>
+      </label>
+      <div class="field">
+        <div class="field-head"><span>添加给哪些角色</span></div>
+        <div id="outfitCharacterList" class="outfit-character-list"></div>
+      </div>
+      <div class="settings-actions">
+        <button class="secondary-btn" type="button" data-close="outfitDialog">取消</button>
+        <button id="saveOutfitBtn" class="primary-btn" type="button">保存服设</button>
+      </div>
+    </form>
+  </dialog>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=88"></script>
+  <script type="module" src="./app.js?v=89"></script>
 </body>
 </html>
