@@ -1030,3 +1030,25 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   .workbench-outfit-head { align-items:flex-start; flex-direction:column; gap:2px; }
   .workbench-outfit-head span { text-align:left; }
 }
+
+
+/* v95: improve outfit picker contrast in dark mode */
+:root[data-theme="dark"] .workbench-outfit-picker{
+  background:rgba(24,35,46,.96);
+  border-color:rgba(153,180,204,.22);
+  box-shadow:0 10px 28px rgba(0,0,0,.18);
+}
+:root[data-theme="dark"] .outfit-choice{
+  background:rgba(29,41,52,.92);
+  border-color:rgba(153,180,204,.24);
+  color:#b9c8d4;
+}
+:root[data-theme="dark"] .outfit-choice.selected{
+  background:rgba(111,154,189,.30);
+  border-color:rgba(170,198,218,.44);
+  color:#e3eef6;
+}
+:root[data-theme="dark"] .outfit-edit-card,
+:root[data-theme="dark"] .outfit-character-option{
+  background:rgba(29,41,52,.82);
+}
