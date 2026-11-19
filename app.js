@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=90',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=91',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1571,7 +1571,8 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
     }
     showResult(blob,seed);
     const p=currentPreset();
-    const galleryId=await addGallery(blob,{
+    const galleryBlob=await encodeHighQualityJpeg(blob,.98);
+    const galleryId=await addGallery(galleryBlob,{
       seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
@@ -1651,7 +1652,27 @@ async function encodeHighQualityJpeg(blob,quality=.98){
     URL.revokeObjectURL(url);
   }
 }
+async function encodePng(blob){
+  const url=URL.createObjectURL(blob);
+  try{
+    const image=await loadCanvasImage(url);
+    const canvas=document.createElement('canvas');
+    canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('浏览器无法生成 PNG');
+    ctx.drawImage(image,0,0);
+    return await new Promise((resolve,reject)=>canvas.toBlob(
+      result=>result?resolve(result):reject(new Error('PNG 导出失败')),
+      'image/png'
+    ));
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
 async function saveImageBlob(blob,name){
+  if(blob?.type==='image/jpeg'){
+    return saveBlob(blob,withExtension(name,'jpg'));
+  }
   if(els.keepNaiMetadata?.checked){
     return saveBlob(blob,withExtension(name,'png'));
   }
@@ -2866,10 +2887,10 @@ async function exportGalleryZip(){
       used.set(base,duplicateCount+1);
       const name=`${base}${duplicateCount?`_${duplicateCount+1}`:''}.png`;
 
-      const cleanBlob=await stripPngMetadata(item.blob);
+      const pngBlob=await encodePng(item.blob);
       const zipEntry=await streamStoredZipEntry({
         name,
-        blob:cleanBlob,
+        blob:pngBlob,
         createdAt:item.createdAt||Date.now(),
         onChunk:storeZipChunk,
         offset:zipOffset
