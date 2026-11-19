@@ -465,7 +465,7 @@
             <div class="download-option">
               <div class="download-option-copy">
                 <strong>保留 NAI 元数据</strong>
-                <p>开启后保存 NAI 原始 PNG，可继续解析提示词、Seed 与生成参数；关闭后保存为高质量 JPEG（98%），不保留 NAI 元数据。</p>
+                <p>开启后单张下载与新生成的图库图片都保留 NAI 原始 PNG 和元数据；关闭后两者都保存为高质量 JPEG（98%），不保留 NAI 元数据。</p>
               </div>
               <label class="toggle-switch" aria-label="保留 NAI 元数据">
                 <input id="keepNaiMetadata" type="checkbox" />
@@ -508,7 +508,7 @@
         <details class="settings-fold">
           <summary><span>图库备份</span></summary>
           <div class="settings-fold-body export-box">
-            <div><p class="settings-fold-note">图库中的新图片以高质量 JPEG（98%）保存；导出 ZIP 时会统一重新编码为无元数据 PNG。</p></div>
+            <div><p class="settings-fold-note">图库跟随「保留 NAI 元数据」开关保存；导出 ZIP 时统一为 PNG。图库中原本是 PNG 的图片保留数据，JPEG 只转换格式，不会恢复元数据。</p></div>
           
           <div class="gallery-export-controls">
             <div class="gallery-export-actions">
@@ -674,6 +674,6 @@
   </dialog>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=86"></script>
+  <script type="module" src="./app.js?v=87"></script>
 </body>
 </html>
