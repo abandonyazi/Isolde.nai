@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=92',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=93',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1571,7 +1571,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
     }
     showResult(blob,seed);
     const p=currentPreset();
-    const galleryBlob=els.keepNaiMetadata?.checked ? blob : await encodeHighQualityJpeg(blob,.98);
+    const galleryBlob=blob;
     const galleryId=await addGallery(galleryBlob,{
       seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
