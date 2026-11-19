@@ -3561,7 +3561,16 @@ window.addEventListener('message',async(event)=>{
       source:'isolde-nai-web',
       requestId:data.requestId,
       ok:true,
-      anchors:anchors.map((item)=>({id:item.id,name:item.name,prompt:item.prompt||''})).filter((item)=>item.name)
+      anchors:anchors.map((item)=>{
+        const outfit=selectedOutfit(item);
+        return {
+          id:item.id,
+          name:item.name,
+          prompt:anchorPromptWithOutfit(item),
+          outfitId:outfit?.id||'',
+          outfitName:outfit?.name||''
+        };
+      }).filter((item)=>item.name)
     },event.origin);
     return;
   }
