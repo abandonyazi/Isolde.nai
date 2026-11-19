@@ -102,7 +102,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=89',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=90',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1628,9 +1628,35 @@ async function stripPngMetadata(blob){
   }
   return new Blob(parts,{type:'image/png'});
 }
+function withExtension(name,ext){
+  return String(name||'image').replace(/\.[a-z0-9]+$/i,'')+'.'+ext;
+}
+async function encodeHighQualityJpeg(blob,quality=.98){
+  const url=URL.createObjectURL(blob);
+  try{
+    const image=await loadCanvasImage(url);
+    const canvas=document.createElement('canvas');
+    canvas.width=image.naturalWidth;canvas.height=image.naturalHeight;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('浏览器无法生成 JPEG');
+    ctx.fillStyle='#fff';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.drawImage(image,0,0);
+    return await new Promise((resolve,reject)=>canvas.toBlob(
+      result=>result?resolve(result):reject(new Error('JPEG 导出失败')),
+      'image/jpeg',
+      quality
+    ));
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
 async function saveImageBlob(blob,name){
-  const output=els.keepNaiMetadata?.checked ? blob : await sanitizeNaiPngMetadata(blob);
-  return saveBlob(output,name);
+  if(els.keepNaiMetadata?.checked){
+    return saveBlob(blob,withExtension(name,'png'));
+  }
+  const output=await encodeHighQualityJpeg(blob,.98);
+  return saveBlob(output,withExtension(name,'jpg'));
 }
 function fallbackDownload(blob,name){
   const url=URL.createObjectURL(blob);
@@ -1690,8 +1716,8 @@ async function addCustomWatermark(source){
 }
 async function saveWatermarkedBlob(blob,name){
   const watermarked=await addCustomWatermark(blob);
-  const cleanWatermarked=await sanitizeNaiPngMetadata(watermarked);
-  await saveBlob(cleanWatermarked,name);
+  const output=await encodeHighQualityJpeg(watermarked,.98);
+  await saveBlob(output,withExtension(name,'jpg'));
 }
 async function testConnection(){
   els.settingsStatus.className='settings-status'; els.settingsStatus.textContent='测试中…';
