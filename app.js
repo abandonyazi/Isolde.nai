@@ -33,7 +33,9 @@ const els = {
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
   presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
-  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'),
+  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
+  outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
+  workbenchOutfitPicker: $('workbenchOutfitPicker'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
   apiPresetSelect: $('apiPresetSelect'), renameApiPresetBtn: $('renameApiPresetBtn'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
@@ -54,6 +56,7 @@ let quickWords = [];
 let quickWordCategories = [];
 let quickWordsActiveCategory = '';
 let selectedAnchorIds = [];
+let selectedOutfitIds = {};
 let galleryBatchMode = false;
 let selectedGalleryIds = new Set();
 let pendingDeleteAction = null;
@@ -476,7 +479,15 @@ function loadState() {
     }];
     saveJson(PRESETS_KEY, presets);
   }
-  selectedAnchorIds = Array.isArray(settings.selectedAnchorIds) ? settings.selectedAnchorIds : [];
+  selectedAnchorIds = Array.isArray(settings.selectedAnchorIds) ? settings.selectedAnchorIds.filter(id=>anchors.some(anchor=>anchor.id===id)) : [];
+  selectedOutfitIds = settings.selectedOutfitIds && typeof settings.selectedOutfitIds === 'object' && !Array.isArray(settings.selectedOutfitIds)
+    ? {...settings.selectedOutfitIds}
+    : {};
+  for (const [anchorId,outfitId] of Object.entries(selectedOutfitIds)) {
+    const anchor=anchors.find(item=>item.id===anchorId);
+    const outfits=Array.isArray(anchor?.outfits)?anchor.outfits:[];
+    if(!anchor||!outfits.some(item=>item?.id===outfitId)) delete selectedOutfitIds[anchorId];
+  }
   els.apiFormat.value = settings.apiFormat || 'nai';
   els.endpoint.value = settings.endpoint || OFFICIAL_BASE;
   const legacyToken = settings.rememberKey === false ? '' : String(settings.apiKey || '').trim();
@@ -550,6 +561,7 @@ function saveSettings() {
     vibeInformation: Number(els.vibeInformation.value),
     presetId: els.presetSelect.value,
     selectedAnchorIds,
+    selectedOutfitIds,
     apiPresetId: settings.apiPresetId || ''
   };
   saveJson(SETTINGS_KEY, settings);
@@ -575,6 +587,21 @@ function selectedAnchors() { return anchors.filter(a => selectedAnchorIds.includ
 function cleanJoin(parts) {
   return parts.map(x=>(x||'').trim().replace(/^[,\s]+|[,\s]+$/g,'')).filter(Boolean).join(', ');
 }
+function anchorOutfits(anchor) {
+  return Array.isArray(anchor?.outfits) ? anchor.outfits.filter(item=>item&&typeof item==='object') : [];
+}
+function selectedOutfit(anchor) {
+  if(!anchor)return null;
+  const id=selectedOutfitIds[anchor.id];
+  return id ? anchorOutfits(anchor).find(item=>item.id===id) || null : null;
+}
+function outfitPromptForAnchor(anchor) {
+  if(!anchor || !selectedAnchorIds.includes(anchor.id)) return '';
+  return String(selectedOutfit(anchor)?.prompt||'').trim();
+}
+function anchorPromptWithOutfit(anchor) {
+  return cleanJoin([String(anchor?.prompt||''), outfitPromptForAnchor(anchor)]);
+}
 function characterPlaceholderNames(text) {
   const names = new Set();
   String(text || '').replace(/\[([^\[\]\r\n]{1,100})\]/g, (match, rawName) => {
@@ -588,7 +615,7 @@ function expandCharacterPlaceholders(text) {
   return String(text || '').replace(/\[([^\[\]\r\n]{1,100})\]/g, (match, rawName) => {
     const name = rawName.trim();
     const anchor = anchors.find(a => a.name === name);
-    const prompt = anchor?.prompt?.trim();
+    const prompt = anchorPromptWithOutfit(anchor).trim();
     return prompt || match;
   });
 }
@@ -630,7 +657,10 @@ function subjectTagsFromAnchors(items) {
   return items.map(anchor => characterSubjectTag(anchor?.prompt || '')).filter(Boolean);
 }
 function orderedAnchorAppearance(items) {
-  return items.map(anchor => stripCharacterSubjectTags(anchor?.prompt || '')).filter(Boolean);
+  return items.map(anchor => cleanJoin([
+    stripCharacterSubjectTags(anchor?.prompt || ''),
+    stripCharacterSubjectTags(outfitPromptForAnchor(anchor))
+  ])).filter(Boolean);
 }
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
@@ -721,21 +751,84 @@ function renderPresetSelect() {
   }
   if (current) els.presetSelect.value = current;
 }
+function closeWorkbenchOutfitPicker() {
+  if(!els.workbenchOutfitPicker)return;
+  els.workbenchOutfitPicker.innerHTML='';
+  els.workbenchOutfitPicker.classList.add('hidden');
+}
+function renderWorkbenchOutfitPicker(anchor) {
+  const box=els.workbenchOutfitPicker;
+  const outfits=anchorOutfits(anchor);
+  if(!box||!anchor||!outfits.length){closeWorkbenchOutfitPicker();return;}
+  box.innerHTML='';
+  box.classList.remove('hidden');
+
+  const head=document.createElement('div');
+  head.className='workbench-outfit-head';
+  const title=document.createElement('strong');
+  title.textContent=`${anchor.name} · 服设`;
+  const hint=document.createElement('span');
+  hint.textContent='选一套，或保持不穿服设';
+  head.append(title,hint);
+  box.appendChild(head);
+
+  const choices=document.createElement('div');
+  choices.className='workbench-outfit-choices';
+  const none=document.createElement('button');
+  none.type='button'; none.className='outfit-choice';
+  none.textContent='不使用服设';
+  none.classList.toggle('selected',!selectedOutfit(anchor));
+  none.addEventListener('click',()=>{
+    delete selectedOutfitIds[anchor.id];
+    closeWorkbenchOutfitPicker();
+    renderAnchorPicker();
+    updateAssembly();
+  });
+  choices.appendChild(none);
+
+  for(const outfit of outfits){
+    const button=document.createElement('button');
+    button.type='button'; button.className='outfit-choice';
+    button.textContent=outfit.name||'未命名服设';
+    button.classList.toggle('selected',selectedOutfit(anchor)?.id===outfit.id);
+    button.addEventListener('click',()=>{
+      selectedOutfitIds[anchor.id]=outfit.id;
+      closeWorkbenchOutfitPicker();
+      renderAnchorPicker();
+      updateAssembly();
+    });
+    choices.appendChild(button);
+  }
+  box.appendChild(choices);
+}
 function renderAnchorPicker() {
   els.anchorPicker.innerHTML = '';
   if (!anchors.length) {
     const note = document.createElement('div');
     note.className = 'empty-note'; note.textContent = '还没有角色锚点';
-    els.anchorPicker.appendChild(note); return;
+    els.anchorPicker.appendChild(note); closeWorkbenchOutfitPicker(); return;
   }
   for (const a of anchors) {
     const b = document.createElement('button');
+    const active=selectedAnchorIds.includes(a.id);
+    const outfit=active?selectedOutfit(a):null;
     b.type='button'; b.className='anchor-chip';
-    b.textContent=a.name;
-    b.classList.toggle('selected', selectedAnchorIds.includes(a.id));
+    b.textContent=outfit ? `${a.name} · ${outfit.name||'服设'}` : a.name;
+    b.classList.toggle('selected',active);
     b.addEventListener('click',()=>{
-      selectedAnchorIds = selectedAnchorIds.includes(a.id) ? selectedAnchorIds.filter(id=>id!==a.id) : [...selectedAnchorIds,a.id];
-      renderAnchorPicker(); updateAssembly();
+      if(selectedAnchorIds.includes(a.id)){
+        selectedAnchorIds=selectedAnchorIds.filter(id=>id!==a.id);
+        delete selectedOutfitIds[a.id];
+        closeWorkbenchOutfitPicker();
+        renderAnchorPicker();
+        updateAssembly();
+        return;
+      }
+      selectedAnchorIds=[...selectedAnchorIds,a.id];
+      renderAnchorPicker();
+      updateAssembly();
+      if(anchorOutfits(a).length) renderWorkbenchOutfitPicker(a);
+      else closeWorkbenchOutfitPicker();
     });
     els.anchorPicker.appendChild(b);
   }
@@ -754,7 +847,7 @@ function insertAnchorPrompts(items) {
   const selected=Array.isArray(items)?items.filter(Boolean):[];
   if(!selected.length){showToast('先选角色锚点');return;}
   const prompts=selected
-    .map(anchor=>String(anchor.prompt||'').trim().replace(/[,\s]+$/g,''))
+    .map(anchor=>anchorPromptWithOutfit(anchor).trim().replace(/[,\s]+$/g,''))
     .filter(Boolean);
   if(!prompts.length){showToast('选中的角色还没有外观词');return;}
 
@@ -1215,11 +1308,21 @@ function renderAnchors() {
   for (const a of anchors) {
     const card=document.createElement('article'); card.className='library-card';
     const title=document.createElement('div'); title.className='library-title';
-    const h=document.createElement('h3'); h.textContent=a.name; title.appendChild(h); card.appendChild(title);
+    const h=document.createElement('h3'); h.textContent=a.name; title.appendChild(h);
+    const outfitCount=anchorOutfits(a).length;
+    if(outfitCount){
+      const badge=document.createElement('span');
+      badge.className='anchor-outfit-count';
+      badge.textContent=`${outfitCount} 套服设`;
+      title.appendChild(badge);
+    }
+    card.appendChild(title);
     const actions=document.createElement('div'); actions.className='card-actions anchor-card-actions';
     actions.appendChild(makeButton('编辑','small-btn',()=>openAnchorEditor(a)));
     actions.appendChild(makeButton(selectedAnchorIds.includes(a.id)?'取消选中':'加入工作台','small-btn',()=>{
-      selectedAnchorIds = selectedAnchorIds.includes(a.id) ? selectedAnchorIds.filter(id=>id!==a.id) : [...selectedAnchorIds,a.id];
+      const active=selectedAnchorIds.includes(a.id);
+      selectedAnchorIds = active ? selectedAnchorIds.filter(id=>id!==a.id) : [...selectedAnchorIds,a.id];
+      if(active) delete selectedOutfitIds[a.id];
       renderAnchors(); renderAnchorPicker(); updateAssembly();
     }));
     actions.appendChild(makeButton('删除','small-btn danger',()=>deleteAnchor(a.id)));
@@ -1230,15 +1333,145 @@ function renderAnchors() {
   }
   renderAnchorPicker();
 }
+function renderAnchorOutfitEditor(anchor) {
+  const host=els.anchorOutfitList;
+  if(!host)return;
+  host.innerHTML='';
+  if(!anchor){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='保存角色后，可以从角色页的「+ 服设」给它添加衣服。';
+    host.appendChild(note);
+    return;
+  }
+  const outfits=anchorOutfits(anchor);
+  if(!outfits.length){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='这个角色还没有服设。';
+    host.appendChild(note);
+    return;
+  }
+  for(const outfit of outfits){
+    const details=document.createElement('details');
+    details.className='outfit-edit-card';
+    const summary=document.createElement('summary');
+    summary.textContent=outfit.name||'未命名服设';
+    details.appendChild(summary);
+
+    const body=document.createElement('div');
+    body.className='outfit-edit-body';
+    const nameLabel=document.createElement('label');
+    nameLabel.className='field compact-field';
+    nameLabel.innerHTML='<span>服设名称</span>';
+    const nameInput=document.createElement('input');
+    nameInput.value=outfit.name||'';
+    nameInput.placeholder='例如：白衬衫 / 冬季校服';
+    nameLabel.appendChild(nameInput);
+
+    const promptLabel=document.createElement('label');
+    promptLabel.className='field compact-field';
+    promptLabel.innerHTML='<span>服装词</span>';
+    const promptInput=document.createElement('textarea');
+    promptInput.rows=4;
+    promptInput.value=outfit.prompt||'';
+    promptInput.placeholder='只写可见服装，例如：white shirt, black trousers, ...';
+    promptLabel.appendChild(promptInput);
+
+    const actions=document.createElement('div');
+    actions.className='outfit-edit-actions';
+    actions.appendChild(makeButton('保存修改','small-btn',()=>{
+      const nextName=nameInput.value.trim();
+      if(!nextName){nameInput.focus();return;}
+      outfit.name=nextName;
+      outfit.prompt=promptInput.value.trim();
+      outfit.updatedAt=Date.now();
+      saveJson(ANCHORS_KEY,anchors);
+      renderAnchorOutfitEditor(anchor);
+      renderAnchors();
+      updateAssembly();
+      showToast('服设已修改');
+    }));
+    actions.appendChild(makeButton('删除','small-btn danger',()=>{
+      if(!confirm(`删除「${outfit.name||'这套服设'}」？`))return;
+      anchor.outfits=anchorOutfits(anchor).filter(item=>item.id!==outfit.id);
+      if(selectedOutfitIds[anchor.id]===outfit.id)delete selectedOutfitIds[anchor.id];
+      saveJson(ANCHORS_KEY,anchors);
+      renderAnchorOutfitEditor(anchor);
+      renderAnchors();
+      updateAssembly();
+      showToast('服设已删除');
+    }));
+    body.append(nameLabel,promptLabel,actions);
+    details.appendChild(body);
+    host.appendChild(details);
+  }
+}
 function openAnchorEditor(a=null) {
   els.anchorDialogTitle.textContent=a?'编辑角色':'新增角色';
   els.anchorId.value=a?.id||''; els.anchorName.value=a?.name||''; els.anchorPrompt.value=a?.prompt||'';
+  renderAnchorOutfitEditor(a);
   els.anchorDialog.showModal();
+}
+function renderOutfitCharacterOptions() {
+  if(!els.outfitCharacterList)return;
+  els.outfitCharacterList.innerHTML='';
+  if(!anchors.length){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='先添加角色，才能给角色加服设。';
+    els.outfitCharacterList.appendChild(note);
+    return;
+  }
+  const preselected=new Set(selectedAnchorIds);
+  for(const anchor of anchors){
+    const label=document.createElement('label');
+    label.className='outfit-character-option';
+    const input=document.createElement('input');
+    input.type='checkbox';
+    input.value=anchor.id;
+    input.checked=preselected.has(anchor.id);
+    const span=document.createElement('span');
+    span.textContent=anchor.name;
+    label.append(input,span);
+    els.outfitCharacterList.appendChild(label);
+  }
+}
+function openOutfitCreator() {
+  if(!anchors.length){showToast('先添加角色');return;}
+  els.outfitName.value='';
+  els.outfitPrompt.value='';
+  renderOutfitCharacterOptions();
+  els.outfitDialog.showModal();
+}
+function saveSharedOutfit() {
+  const name=els.outfitName.value.trim();
+  const prompt=els.outfitPrompt.value.trim();
+  if(!name){els.outfitName.focus();return;}
+  const ids=[...els.outfitCharacterList.querySelectorAll('input[type="checkbox"]:checked')].map(input=>input.value);
+  if(!ids.length){showToast('至少选一个角色');return;}
+  const now=Date.now();
+  let added=0;
+  for(const id of ids){
+    const anchor=anchors.find(item=>item.id===id);
+    if(!anchor)continue;
+    const outfits=anchorOutfits(anchor);
+    outfits.push({id:uid('outfit'),name,prompt,updatedAt:now});
+    anchor.outfits=outfits;
+    anchor.updatedAt=now;
+    added++;
+  }
+  saveJson(ANCHORS_KEY,anchors);
+  els.outfitDialog.close();
+  renderAnchors();
+  updateAssembly();
+  showToast(`服设已加入 ${added} 个角色`);
 }
 function deleteAnchor(id) {
   const a=anchors.find(x=>x.id===id);
   if (!a || !confirm(`删除角色「${a.name}」？`)) return;
   anchors=anchors.filter(x=>x.id!==id); selectedAnchorIds=selectedAnchorIds.filter(x=>x!==id);
+  delete selectedOutfitIds[id];
   saveJson(ANCHORS_KEY,anchors); renderAnchors(); updateAssembly();
 }
 const NAI_PNG_SIGNATURE=[137,80,78,71,13,10,26,10];
@@ -1472,7 +1705,7 @@ function resolveAutomaticCharacters(value) {
     if(!character||typeof character!=='object')return null;
     const anchorName=String(character.anchor||'').trim();
     const saved=anchorName?anchors.find((item)=>item.name===anchorName):null;
-    const savedPrompt=String((saved&&saved.prompt)||'').trim();
+    const savedPrompt=anchorPromptWithOutfit(saved).trim();
     const currentPrompt=String(character.prompt||character.appearance||'').trim();
     const prompt=cleanJoin([savedPrompt,currentPrompt]);
     if(!prompt)return null;
@@ -3121,6 +3354,8 @@ els.savePresetBtn.addEventListener('click',()=>{
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
+els.addOutfitBtn?.addEventListener('click',openOutfitCreator);
+els.saveOutfitBtn?.addEventListener('click',saveSharedOutfit);
 els.saveAnchorBtn.addEventListener('click',()=>{
   const name=els.anchorName.value.trim();if(!name){els.anchorName.focus();return;}
   try{
