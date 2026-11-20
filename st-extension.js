@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.49';
+const EXTENSION_ASSET_VERSION = '0.9.50';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.49', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.50', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -1287,6 +1287,41 @@ function createMediaTools(messageId, mediaIndex, media) {
   return tools;
 }
 
+function applyInlineMediaGeometry(container, media) {
+  if (!container) return;
+  const width = Number(media && media.width);
+  const height = Number(media && media.height);
+  const hasSize = Number.isFinite(width) && width > 0 && Number.isFinite(height) && height > 0;
+
+  container.style.setProperty('width', '100%', 'important');
+  container.style.setProperty('max-width', '100%', 'important');
+  container.style.setProperty('height', 'auto', 'important');
+  container.style.setProperty('max-height', 'none', 'important');
+  container.style.setProperty('min-height', '0', 'important');
+  container.style.setProperty('aspect-ratio', hasSize ? width + ' / ' + height : 'auto', 'important');
+  container.style.setProperty('overflow', 'visible', 'important');
+
+  const image = container.querySelector('img.mes_img, .mes_img');
+  if (image) {
+    image.style.setProperty('display', 'block', 'important');
+    image.style.setProperty('width', '100%', 'important');
+    image.style.setProperty('max-width', '100%', 'important');
+    image.style.setProperty('height', 'auto', 'important');
+    image.style.setProperty('max-height', 'none', 'important');
+    image.style.setProperty('min-height', '0', 'important');
+    image.style.setProperty('aspect-ratio', hasSize ? width + ' / ' + height : 'auto', 'important');
+    image.style.setProperty('object-fit', 'contain', 'important');
+  }
+
+  const link = container.querySelector('a');
+  if (link) {
+    link.style.setProperty('display', 'block', 'important');
+    link.style.setProperty('width', '100%', 'important');
+    link.style.setProperty('height', 'auto', 'important');
+    link.style.setProperty('max-height', 'none', 'important');
+  }
+}
+
 function decorateMessageMedia(messageId) {
   const context = getContext();
   const message = context && context.chat && context.chat[Number(messageId)];
@@ -1311,10 +1346,12 @@ function decorateMessageMedia(messageId) {
 
   if (!fresh.length) {
     root.querySelectorAll('.isolde-inline-image').forEach((container) => {
+      const index = Number(container.getAttribute('data-index'));
+      const media = message.extra.media[index];
+      if (!media || media.source !== 'Isolde.nai') return;
+      applyInlineMediaGeometry(container, media);
       if (!container.querySelector('.isolde-media-tools')) {
-        const index = Number(container.getAttribute('data-index'));
-        const media = message.extra.media[index];
-        if (media && media.source === 'Isolde.nai') container.appendChild(createMediaTools(messageId, index, media));
+        container.appendChild(createMediaTools(messageId, index, media));
       }
     });
     return;
@@ -1344,6 +1381,7 @@ function decorateMessageMedia(messageId) {
     }
 
     container.classList.add('isolde-inline-image');
+    applyInlineMediaGeometry(container, media);
     const nativeControls = container.querySelector('.mes_img_controls');
     if (nativeControls) nativeControls.style.display = 'none';
     if (!container.querySelector('.isolde-media-tools')) {
