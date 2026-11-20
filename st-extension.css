@@ -183,3 +183,40 @@
     flex:0 1 auto;
   }
 }
+
+/* Persistent Isolde.nai floor slots: the card itself owns pending + ready states. */
+.isolde-generation-placeholder.is-ready{
+  display:block !important;
+  width:min(100%,760px) !important;
+  min-height:0 !important;
+  padding:0 !important;
+  border:0 !important;
+  background:transparent !important;
+  box-shadow:none !important;
+  overflow:visible !important;
+}
+.isolde-slot-image-wrap{
+  position:relative;
+  width:100%;
+  border-radius:14px;
+  overflow:hidden;
+}
+.isolde-slot-image{
+  display:block;
+  width:100%;
+  max-width:100%;
+  height:auto;
+  max-height:none;
+  object-fit:contain;
+  border-radius:14px;
+}
+.isolde-generation-placeholder.is-ready .isolde-media-tools{
+  opacity:.96;
+}
+@media(max-width:600px){
+  .isolde-generation-placeholder.is-ready{
+    min-height:0 !important;
+    padding:0 !important;
+    align-items:initial !important;
+  }
+}
