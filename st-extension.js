@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.53';
+const EXTENSION_ASSET_VERSION = '0.9.54';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.53', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.54', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -1440,7 +1440,7 @@ function createMediaTools(messageId, mediaIndex, media) {
   const download = document.createElement('button');
   download.type = 'button';
   download.textContent = '下载';
-  download.title = '按网页「下载设置」保存 PNG';
+  download.title = '按网页「下载设置」保存图片';
 
   const watermarked = document.createElement('button');
   watermarked.type = 'button';
@@ -1648,15 +1648,16 @@ async function downloadIsoldeMedia(media, button, watermarked = false) {
     const response = await fetch(media.url, { cache: 'no-store' });
     if (!response.ok) throw new Error('图片读取失败');
     const original = await response.blob();
-    const sourceBlob = original.type === 'image/png' ? original : new Blob([original], { type: 'image/png' });
-    const prepared = await bridgeRequest('prepareDownload', { blob: sourceBlob, watermarked }, 60000);
-    const blob = prepared?.blob instanceof Blob ? prepared.blob : sourceBlob;
+    const prepared = await bridgeRequest('prepareDownload', { blob: original, watermarked }, 60000);
+    const blob = prepared?.blob instanceof Blob ? prepared.blob : original;
+    const extension = String(prepared?.extension || (blob.type === 'image/jpeg' ? 'jpg' : 'png')).toLowerCase();
+    const mimeType = String(prepared?.mimeType || blob.type || (extension === 'jpg' ? 'image/jpeg' : 'image/png'));
     const seed = String(media.isolde_seed || '').trim();
     const suffix = watermarked ? '-watermarked' : '';
-    const fileName = 'isolde-' + (seed || Date.now()) + suffix + '.png';
+    const fileName = 'isolde-' + (seed || Date.now()) + suffix + '.' + extension;
 
     if (isIOSLike() && navigator.share && typeof File !== 'undefined') {
-      const file = new File([blob], fileName, { type: 'image/png' });
+      const file = new File([blob], fileName, { type: mimeType });
       const shareData = { files: [file] };
       try {
         if (!navigator.canShare || navigator.canShare(shareData)) {
