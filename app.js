@@ -1705,7 +1705,7 @@ function resolveAutomaticCharacters(value) {
     if(!character||typeof character!=='object')return null;
     const anchorName=String(character.anchor||'').trim();
     const saved=anchorName?anchors.find((item)=>item.name===anchorName):null;
-    const savedPrompt=anchorPromptWithOutfit(saved).trim();
+    const savedPrompt=String(saved?.prompt||'').trim();
     const currentPrompt=String(character.prompt||character.appearance||'').trim();
     const prompt=cleanJoin([savedPrompt,currentPrompt]);
     if(!prompt)return null;
@@ -3561,16 +3561,10 @@ window.addEventListener('message',async(event)=>{
       source:'isolde-nai-web',
       requestId:data.requestId,
       ok:true,
-      anchors:anchors.map((item)=>{
-        const outfit=selectedOutfit(item);
-        return {
-          id:item.id,
-          name:item.name,
-          prompt:anchorPromptWithOutfit(item),
-          outfitId:outfit?.id||'',
-          outfitName:outfit?.name||''
-        };
-      }).filter((item)=>item.name)
+      anchors:anchors.map((item)=>({
+        id:item.id,
+        name:String(item.name||'').trim()
+      })).filter((item)=>item.name)
     },event.origin);
     return;
   }
