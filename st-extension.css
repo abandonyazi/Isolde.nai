@@ -119,13 +119,22 @@
 
 .isolde-inline-media-slot{display:grid;gap:10px;margin:10px 0 14px;width:100%}
 .isolde-inline-media-slot .isolde-inline-image{
-  width:100%;
-  max-width:100%;
+  width:100% !important;
+  max-width:100% !important;
+  height:auto !important;
+  max-height:none !important;
+  min-height:0 !important;
   margin:0;
   justify-self:stretch;
   position:relative;
-  overflow:hidden;
+  overflow:visible !important;
   border-radius:12px;
+}
+.isolde-inline-media-slot .isolde-inline-image > a{
+  display:block !important;
+  width:100% !important;
+  height:auto !important;
+  max-height:none !important;
 }
 .isolde-inline-media-slot .mes_img,
 .isolde-inline-media-slot img.mes_img{
@@ -133,9 +142,11 @@
   width:100% !important;
   max-width:100% !important;
   height:auto !important;
+  max-height:none !important;
+  min-height:0 !important;
   margin:0 !important;
   border-radius:12px;
-  object-fit:cover;
+  object-fit:contain !important;
 }
 .isolde-inline-media-slot .isolde-media-tools{
   opacity:.94;
