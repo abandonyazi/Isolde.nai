@@ -3580,15 +3580,28 @@ window.addEventListener('message',async(event)=>{
   if(data.type==='prepareDownload'){
     try{
       if(!(data.blob instanceof Blob))throw new Error('没有收到可下载的图片');
-      const output=data.watermarked
-        ? await addCustomWatermark(data.blob)
-        : (els.keepNaiMetadata?.checked ? data.blob : await stripPngMetadata(data.blob));
+      const keepMetadata=els.keepNaiMetadata?.checked===true;
+      let output;
+      let extension;
+      if(data.watermarked){
+        const watermarked=await addCustomWatermark(data.blob);
+        output=await encodeHighQualityJpeg(watermarked,.98);
+        extension='jpg';
+      }else if(keepMetadata){
+        output=data.blob.type==='image/png' ? data.blob : await encodePng(data.blob);
+        extension='png';
+      }else{
+        output=await encodeHighQualityJpeg(data.blob,.98);
+        extension='jpg';
+      }
       event.source?.postMessage({
         source:'isolde-nai-web',
         requestId:data.requestId,
         ok:true,
         blob:output,
-        keepNaiMetadata:els.keepNaiMetadata?.checked===true,
+        extension,
+        mimeType:output.type|| (extension==='jpg'?'image/jpeg':'image/png'),
+        keepNaiMetadata:keepMetadata,
         watermarked:data.watermarked===true
       },event.origin);
     }catch(e){
