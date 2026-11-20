@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.52';
+const EXTENSION_ASSET_VERSION = '0.9.53';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.52', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.53', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -1090,6 +1090,8 @@ async function addPendingScenes(messageId, scenes) {
       height: resolvedSize.height,
       orientation: resolvedSize.orientation,
       sizeTier: s.mode === 'smart' ? s.smartSize : '',
+      image: null,
+      history: [],
     };
     if (pending.prompt) {
       message.extra.isolde_pending_scenes.push(pending);
@@ -1108,10 +1110,32 @@ async function skipPendingScene(messageId, pendingId) {
   const pending = pendingScenesFor(message);
   const index = pending.findIndex((item) => item && item.id === pendingId);
   if (index < 0) return;
+  if (pending[index]?.image?.url) return;
 
   pending.splice(index, 1);
   if (!pending.length && message && message.extra) delete message.extra.isolde_pending_scenes;
   if (context.saveChat) await context.saveChat();
+  queueDecorate(messageId);
+}
+
+function sceneImageRecord(result, imagePath, item) {
+  return {
+    url: imagePath,
+    title: result.scenePrompt || item.prompt || result.prompt || 'Isolde.nai',
+    width: Number(result.width) || Number(item.width) || undefined,
+    height: Number(result.height) || Number(item.height) || undefined,
+    isolde_scene_prompt: result.scenePrompt || item.prompt || '',
+    isolde_prompt: result.prompt || '',
+    isolde_negative: result.negative || '',
+    isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
+    isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
+    isolde_characters: cleanSceneCharacters(result.characters || item.characters),
+  };
+}
+
+async function persistSceneSlot(messageId, message) {
+  const context = getContext();
+  if (context?.saveChat) await context.saveChat();
   queueDecorate(messageId);
 }
 
@@ -1126,8 +1150,13 @@ async function generatePendingScene(messageId, pendingId, ...buttons) {
   const pending = pendingScenesFor(message);
   const item = pending.find((scene) => scene && scene.id === pendingId);
   if (!item) {
-    toast('这个生图点已经处理过了。', 'warning');
+    toast('这个生图点已经不在这里了。', 'warning');
     queueDecorate(messageId);
+    return;
+  }
+
+  if (item.image?.url) {
+    await rerollPendingScene(messageId, pendingId, false, ...buttons);
     return;
   }
 
@@ -1147,29 +1176,110 @@ async function generatePendingScene(messageId, pendingId, ...buttons) {
     const result = response && Array.isArray(response.results) ? response.results[0] : null;
     if (!result || !(result.blob instanceof Blob)) throw new Error('没有收到图片');
 
-    await attachResults([result], messageId, [{
-      prompt: item.prompt,
-      characters: cleanSceneCharacters(item.characters),
-      afterParagraph: item.afterParagraph,
-      width: Number(item.width) || undefined,
-      height: Number(item.height) || undefined,
-    }]);
+    const base64 = await blobToBase64(result.blob);
+    const imagePath = await saveBase64AsFile(base64, 'Isolde.nai', 'isolde_' + Date.now(), 'png');
+    item.image = sceneImageRecord(result, imagePath, item);
+    if (!Array.isArray(item.history)) item.history = [];
+    await persistSceneSlot(messageId, message);
 
-    const current = pendingScenesFor(message);
-    const currentIndex = current.findIndex((scene) => scene && scene.id === pendingId);
-    if (currentIndex >= 0) current.splice(currentIndex, 1);
-    if (!current.length && message && message.extra) delete message.extra.isolde_pending_scenes;
-    if (context.saveChat) await context.saveChat();
-    queueDecorate(messageId);
-
-    setState('success', '这一个生图点已生成');
-    setTimeout(() => setState('idle', '待机'), 1800);
+    setState('success', '图片已放进这个生图框');
+    setTimeout(() => setState('idle', '待机'), 1600);
   } catch (error) {
-    console.error('[Isolde.nai] pending scene generation failed', error);
+    console.error('[Isolde.nai] scene slot generation failed', error);
     setState('error', (error && error.message) || '生成失败');
-    toast((error && error.message) || '生成失败，这个生图点会保留。', 'error');
+    toast((error && error.message) || '生成失败，这个生图框会保留。', 'error');
   } finally {
     running = false;
+    buttons.forEach((button) => { if (button) button.disabled = false; });
+  }
+}
+
+async function rerollPendingScene(messageId, pendingId, keepSeed, ...buttons) {
+  if (running) {
+    toast('上一张还在生成。', 'warning');
+    return;
+  }
+
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const item = pendingScenesFor(message).find((scene) => scene && scene.id === pendingId);
+  const currentImage = item?.image;
+  if (!item || !currentImage?.url) {
+    toast('这个生图框里还没有图片。', 'warning');
+    return;
+  }
+
+  running = true;
+  buttons.forEach((button) => { if (button) button.disabled = true; });
+  setState('generating', keepSeed ? '正在同 seed 重绘…' : '正在重 Roll…');
+
+  try {
+    const seeds = keepSeed && currentImage.isolde_seed ? [String(currentImage.isolde_seed)] : [];
+    const response = await bridgeRequest('generate', {
+      scenePlans: [{
+        prompt: item.prompt,
+        characters: cleanSceneCharacters(currentImage.isolde_characters || item.characters),
+        width: Number(item.width) || Number(currentImage.width) || undefined,
+        height: Number(item.height) || Number(currentImage.height) || undefined,
+      }],
+      seeds,
+      promptOverrides: currentImage.isolde_prompt ? [{
+        positive: String(currentImage.isolde_prompt || ''),
+        negative: String(currentImage.isolde_negative || ''),
+      }] : [],
+      sizeOverrides: [{
+        width: Number(item.width) || Number(currentImage.width) || undefined,
+        height: Number(item.height) || Number(currentImage.height) || undefined,
+      }],
+    });
+    const result = response && Array.isArray(response.results) ? response.results[0] : null;
+    if (!result || !(result.blob instanceof Blob)) throw new Error('重绘没有返回图片');
+
+    const base64 = await blobToBase64(result.blob);
+    const imagePath = await saveBase64AsFile(base64, 'Isolde.nai', 'isolde_reroll_' + Date.now(), 'png');
+    if (!Array.isArray(item.history)) item.history = [];
+    item.history.push({ ...currentImage });
+    item.image = sceneImageRecord(result, imagePath, item);
+    await persistSceneSlot(messageId, message);
+
+    setState('success', keepSeed ? '同 seed 已在原框替换' : '重 Roll 已在原框替换');
+    setTimeout(() => setState('idle', '待机'), 1600);
+  } catch (error) {
+    console.error('[Isolde.nai] scene slot reroll failed', error);
+    setState('error', (error && error.message) || '重绘失败');
+    toast((error && error.message) || '重绘失败', 'error');
+  } finally {
+    running = false;
+    buttons.forEach((button) => { if (button) button.disabled = false; });
+  }
+}
+
+async function deletePendingSceneImage(messageId, pendingId, ...buttons) {
+  if (running) return;
+  const context = getContext();
+  const message = context && context.chat && context.chat[Number(messageId)];
+  const item = pendingScenesFor(message).find((scene) => scene && scene.id === pendingId);
+  const currentImage = item?.image;
+  if (!item || !currentImage?.url) return;
+
+  buttons.forEach((button) => { if (button) button.disabled = true; });
+  try {
+    const history = Array.isArray(item.history) ? item.history : [];
+    item.image = history.length ? history.pop() : null;
+    item.history = history;
+    await persistSceneSlot(messageId, message);
+
+    try { await deleteMediaFromServer(currentImage.url, true); } catch {}
+    try {
+      await bridgeRequest('deleteGallery', {
+        galleryId: currentImage.isolde_gallery_id || '',
+        seed: currentImage.isolde_seed || '',
+        scenePrompt: currentImage.isolde_scene_prompt || currentImage.title || item.prompt || '',
+      }, 60000);
+    } catch (error) {
+      console.warn('[Isolde.nai] scene slot gallery deletion failed', error);
+    }
+  } finally {
     buttons.forEach((button) => { if (button) button.disabled = false; });
   }
 }
@@ -1179,6 +1289,75 @@ function createPendingPlaceholder(messageId, item) {
   card.className = 'isolde-generation-placeholder';
   card.dataset.pendingId = item.id;
   card.title = item.prompt || 'Isolde.nai 生图点';
+
+  const image = item.image;
+  if (image?.url) {
+    card.classList.add('is-ready');
+
+    const wrap = document.createElement('div');
+    wrap.className = 'isolde-slot-image-wrap';
+
+    const img = document.createElement('img');
+    img.className = 'isolde-slot-image';
+    img.src = image.url;
+    img.alt = item.prompt || 'Isolde.nai';
+    img.loading = 'lazy';
+
+    const tools = document.createElement('div');
+    tools.className = 'isolde-media-tools';
+
+    const reroll = document.createElement('button');
+    reroll.type = 'button';
+    reroll.textContent = '重Roll';
+
+    const sameSeed = document.createElement('button');
+    sameSeed.type = 'button';
+    sameSeed.textContent = '同seed';
+
+    const download = document.createElement('button');
+    download.type = 'button';
+    download.textContent = '下载';
+
+    const watermarked = document.createElement('button');
+    watermarked.type = 'button';
+    watermarked.textContent = '水印版';
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'isolde-delete';
+    remove.textContent = '删除';
+
+    reroll.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void rerollPendingScene(messageId, item.id, false, reroll, sameSeed, download, watermarked, remove);
+    });
+    sameSeed.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void rerollPendingScene(messageId, item.id, true, reroll, sameSeed, download, watermarked, remove);
+    });
+    download.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void downloadIsoldeMedia(image, download, false);
+    });
+    watermarked.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void downloadIsoldeMedia(image, watermarked, true);
+    });
+    remove.addEventListener('click', (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      void deletePendingSceneImage(messageId, item.id, reroll, sameSeed, download, watermarked, remove);
+    });
+
+    tools.append(reroll, sameSeed, download, watermarked, remove);
+    wrap.append(img, tools);
+    card.appendChild(wrap);
+    return card;
+  }
 
   const body = document.createElement('div');
   body.className = 'isolde-placeholder-body';
