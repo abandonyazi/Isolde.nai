@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.51';
+const EXTENSION_ASSET_VERSION = '0.9.52';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.51', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.52', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -1422,6 +1422,27 @@ function decorateAllIsoldeMedia() {
       && message.extra.isolde_pending_scenes.length > 0;
     if (hasMedia || hasPending) queueDecorate(index);
   });
+  return chat.length;
+}
+
+let decorateAllRetryTimers = [];
+
+function scheduleDecorateAllIsoldeMedia() {
+  decorateAllRetryTimers.forEach((timer) => clearTimeout(timer));
+  decorateAllRetryTimers = [];
+
+  const run = () => {
+    try {
+      decorateAllIsoldeMedia();
+    } catch (error) {
+      console.warn('[Isolde.nai] restore inline media failed', error);
+    }
+  };
+
+  requestAnimationFrame(run);
+  [100, 250, 500, 900, 1500, 2500, 4000].forEach((delay) => {
+    decorateAllRetryTimers.push(setTimeout(run, delay));
+  });
 }
 
 function isIOSLike() {
@@ -1736,7 +1757,7 @@ function resetForChat() {
   lastMessageKey = '';
   renderControls();
   setState('idle', '待机');
-  setTimeout(decorateAllIsoldeMedia, 80);
+  scheduleDecorateAllIsoldeMedia();
 }
 
 let initialized = false;
@@ -1751,7 +1772,7 @@ function initializeIsoldeExtension() {
   eventSource.on(event_types.CHAT_CHANGED, resetForChat);
   if (event_types.MESSAGE_UPDATED) eventSource.on(event_types.MESSAGE_UPDATED, (messageId) => queueDecorate(messageId));
   if (event_types.MESSAGE_SWIPED) eventSource.on(event_types.MESSAGE_SWIPED, (messageId) => queueDecorate(messageId));
-  setTimeout(decorateAllIsoldeMedia, 120);
+  scheduleDecorateAllIsoldeMedia();
 }
 
 if (document.readyState === 'loading') {
