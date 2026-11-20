@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.48';
+const EXTENSION_ASSET_VERSION = '0.9.49';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.48', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.49', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -753,14 +753,10 @@ globalThis.IsoldeNaiHost = {
 
 function formatAnchorLibrary(anchorEntries) {
   const entries = Array.isArray(anchorEntries) ? anchorEntries : [];
-  const lines = entries.map((item) => {
-    const name = String((item && item.name) || '').trim();
-    const prompt = String((item && item.prompt) || '').trim();
-    const outfitName = String((item && item.outfitName) || '').trim();
-    const label = outfitName ? name + ' [当前服设: ' + outfitName + ']' : name;
-    return name && prompt ? '- ' + label + ': ' + prompt : '';
-  }).filter(Boolean);
-  return lines.length ? lines.join('\n').slice(0, 16000) : '(empty)';
+  const names = entries
+    .map((item) => String((item && item.name) || '').trim())
+    .filter(Boolean);
+  return names.length ? names.map((name) => '- ' + name).join('\n') : '(empty)';
 }
 
 function cleanSceneCharacters(value) {
@@ -805,19 +801,18 @@ function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}
     '- Put a scene immediately after the paragraph where that visual moment occurs.',
     '- Write concise NovelAI-style comma-separated English visual tags.',
     '- prompt is the Base Prompt only: global character counts, environment, composition, camera, lighting, atmosphere, and shared relations.',
-    '- Put every visible individual in characters[]. Each characters[].prompt contains that person\'s current clothing, expression, pose, action, props, and identity-specific visual traits.',
+    '- Put every visible individual in characters[]. For a character with a matching anchor, characters[].prompt contains only scene-specific tags: current clothing when needed, expression, pose, action, and props. Do not write permanent appearance traits; the plugin injects them after your response.',
     '- Decide who is visibly present from all supplied sources and story continuity. A visible character does not need to exist in the fixed appearance library.',
-    '- If a visible character matches the fixed appearance library, set anchor to that exact library name. Do not copy or rewrite the saved fixed appearance into characters[].prompt; the plugin injects the saved anchor itself.',
-    '- A library entry marked [当前服设: ...] is an active user-selected outfit. Treat it as fixed clothing for that character and do not add conflicting clothing unless the latest scene unmistakably describes a change of clothes.',
+    '- If a visible character matches an available anchor name, set anchor to that exact name. The plugin injects the saved fixed appearance after your response; you do not receive or rewrite that appearance prompt.',
     '- For a visible character with no matching library entry, leave anchor empty and derive concise fixed appearance plus current clothing/action from the character card, persona, activated world info, and story context.',
     '- Do not save or invent a permanent library entry. Library-missing characters stay temporary for this image.',
     '- One-off or unnamed characters may be drawn from explicit story details without being added to the library.',
     '- Resolve names, nicknames, titles, pronouns, and indirect references from context instead of requiring literal name matches.',
     '- If two possible identities remain genuinely ambiguous, prefer the interpretation best supported by the immediate scene and earlier context; do not merge two characters into one.',
-    '- Preserve explicit visual details from the conversation and avoid contradicting the fixed library.',
+    '- Preserve explicit visual details from the conversation. Fixed anchor appearance is injected later by the plugin and should not be duplicated in your output.',
     '- If generate=false, scenes must be [].',
     '',
-    'Fixed appearance library:',
+    'Available fixed-anchor names:',
     anchorLibrary,
     '',
     'Current character card:',
