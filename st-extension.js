@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.50';
+const EXTENSION_ASSET_VERSION = '0.9.51';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.50', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.51', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -1006,10 +1006,31 @@ async function attachResults(results, messageId, scenePlans = []) {
 }
 
 
+const decorateRetryTimers = new Map();
+
 function queueDecorate(messageId) {
-  requestAnimationFrame(() => {
-    setTimeout(() => decorateMessageMedia(messageId), 120);
+  const key = String(messageId);
+  const previous = decorateRetryTimers.get(key);
+  if (previous) previous.forEach((timer) => clearTimeout(timer));
+
+  const timers = [];
+  const run = () => {
+    try {
+      decorateMessageMedia(messageId);
+    } catch (error) {
+      console.warn('[Isolde.nai] inline media decoration retry failed', error);
+    }
+  };
+
+  requestAnimationFrame(run);
+  [80, 180, 360, 700, 1200].forEach((delay, index, all) => {
+    const timer = setTimeout(() => {
+      run();
+      if (index === all.length - 1) decorateRetryTimers.delete(key);
+    }, delay);
+    timers.push(timer);
   });
+  decorateRetryTimers.set(key, timers);
 }
 
 function normalizeAnchorText(value) {
@@ -1605,6 +1626,8 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
     const previousVersion = { ...media };
     delete previousVersion.isolde_history;
 
+    const originalAfterParagraph = media.isolde_after_paragraph;
+    const originalAnchorText = media.isolde_anchor_text;
     const newMedia = {
       ...media,
       url: imagePath,
@@ -1617,6 +1640,8 @@ async function rerollMedia(messageId, mediaIndex, keepSeed, ...buttons) {
       isolde_seed: result.seed === undefined || result.seed === null ? '' : String(result.seed),
       isolde_gallery_id: result.galleryId === undefined || result.galleryId === null ? '' : String(result.galleryId),
       isolde_characters: cleanSceneCharacters(result.characters || media.isolde_characters),
+      isolde_after_paragraph: originalAfterParagraph,
+      isolde_anchor_text: originalAnchorText,
       isolde_history: [...history, previousVersion],
     };
     message.extra.media.splice(Number(mediaIndex), 1, newMedia);
