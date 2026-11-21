@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.54';
+const EXTENSION_ASSET_VERSION = '0.9.55';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -498,7 +498,7 @@ function createUi() {
     '<div class="isolde-toggle"><span>启用酒馆配图</span><input data-isolde-enabled type="checkbox" aria-label="启用酒馆配图"></div>',
     '<div class="isolde-grid">',
       '<label>模式<select data-isolde-mode><option value="smart">智能判断</option><option value="fixed">固定触发</option></select></label>',
-      '<label>张数<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
+      '<label>张数 · 必达<input data-isolde-count type="number" inputmode="numeric" min="1" max="12" step="1"></label>',
       '<label style="grid-column:1 / -1">画幅<select data-isolde-size aria-label="画幅"></select></label>',
       '<label style="grid-column:1 / -1">轮次<input data-isolde-interval data-isolde-auto-field type="number" inputmode="numeric" min="1" max="999" step="1"></label>',
     '</div>',
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.54', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.55', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -777,8 +777,8 @@ function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}
   const paragraphs = latestParagraphs(messageId);
   const numbered = paragraphs.map((paragraph, index) => 'P' + (index + 1) + ': ' + paragraph).join('\n\n');
   const triggerRule = force
-    ? 'This trigger is mandatory. generate must be true.'
-    : 'Judge only the current latest reply. Set generate=true only when this reply itself contains a visually distinct moment worth illustrating now. Pure small talk or a reply with no meaningful visual change should be skipped.';
+    ? 'This trigger is mandatory. generate must be true. The image quota is due now: return exactly ' + maxScenes + ' distinct scene object' + (maxScenes === 1 ? '' : 's') + ', no fewer.'
+    : 'Judge only the current latest reply. Set generate=true only when this reply itself contains a visually distinct moment worth illustrating now. Pure small talk or a reply with no meaningful visual change may be skipped because the plugin will enforce the configured quota by the cycle deadline.';
   const anchorLibrary = formatAnchorLibrary(anchorEntries);
   const charCard = String(sourceContext.charCard || '').trim() || '(unavailable)';
   const persona = String(sourceContext.persona || '').trim() || '(unavailable)';
@@ -788,7 +788,9 @@ function directorPrompt(messageId, force, anchorEntries = [], sourceContext = {}
     '',
     triggerRule,
     '',
-    'When generate=true, return between 1 and ' + maxScenes + ' scene objects, never more. Prefer one strong image over redundant alternate shots. Images must belong to the current latest reply only.',
+    force
+      ? 'This is a quota-fill request. Return exactly ' + maxScenes + ' scene object' + (maxScenes === 1 ? '' : 's') + '. Make them visually distinct and place each at the best paragraph in the current latest reply.'
+      : 'When generate=true, return between 1 and ' + maxScenes + ' scene objects, never more. Choose only genuinely useful illustrations; the plugin, not you, owns the final quota.',
     '',
     'Return JSON only with this exact structure:',
     '{"generate":true,"reason":"short reason","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"orientation":"portrait","characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"character-specific NovelAI tags"}]}]}',
@@ -872,7 +874,7 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
 }
 
 async function planScenes(messageId, force, maxScenes = 1) {
-  setState('judging', force ? '正在整理这一幕…' : '正在判断这一幕…');
+  setState('judging', force ? '正在补齐本周期配额…' : '正在判断这一幕…');
   let anchorEntries = [];
   try {
     const catalog = await bridgeRequest('getAnchors', {}, 60000);
@@ -887,10 +889,62 @@ async function planScenes(messageId, force, maxScenes = 1) {
     persona: currentPersona(),
     worldInfo,
   };
-  const raw = await generateQuietPrompt({
-    quietPrompt: directorPrompt(messageId, force, anchorEntries, sourceContext, maxScenes),
-  });
-  return parseDirectorReply(raw, maxScenes, force, latestParagraphs(messageId).length);
+  const paragraphCount = latestParagraphs(messageId).length;
+  const ask = async (count, mustFill, extraInstruction = '') => {
+    const base = directorPrompt(messageId, mustFill, anchorEntries, sourceContext, count);
+    const quietPrompt = extraInstruction ? base + '\n\n' + extraInstruction : base;
+    const raw = await generateQuietPrompt({ quietPrompt });
+    return parseDirectorReply(raw, count, mustFill, paragraphCount);
+  };
+
+  const first = await ask(maxScenes, force);
+  if (!force) return first;
+
+  const scenes = [...first.scenes].slice(0, maxScenes);
+  if (scenes.length >= maxScenes) {
+    return { generate: true, reason: first.reason || 'quota', scenes };
+  }
+
+  // The quota is a hard user setting. If the director under-returns, ask only
+  // for the missing scenes and preserve the valid scenes already received.
+  let missing = maxScenes - scenes.length;
+  if (missing > 0) {
+    const existing = scenes.map((scene, index) => (index + 1) + '. ' + scene.prompt).join('\n');
+    const supplement = await ask(
+      missing,
+      true,
+      [
+        'Your previous response under-filled the hard quota.',
+        'Return exactly ' + missing + ' additional scene object' + (missing === 1 ? '' : 's') + ' only.',
+        'Do not repeat these already accepted scenes:',
+        existing || '(none)',
+      ].join('\n'),
+    );
+    scenes.push(...supplement.scenes.slice(0, missing));
+  }
+
+  // Last-resort per-scene repair: a model that keeps returning one item cannot
+  // silently shrink the user's configured count.
+  missing = maxScenes - scenes.length;
+  for (let i = 0; i < missing; i++) {
+    const existing = scenes.map((scene, index) => (index + 1) + '. ' + scene.prompt).join('\n');
+    const one = await ask(
+      1,
+      true,
+      [
+        'One quota slot is still missing.',
+        'Return exactly one new scene object.',
+        'It must be distinct from these accepted scenes:',
+        existing || '(none)',
+      ].join('\n'),
+    );
+    if (one.scenes[0]) scenes.push(one.scenes[0]);
+  }
+
+  if (scenes.length < maxScenes) {
+    throw new Error('导演没有补齐设定的 ' + maxScenes + ' 张配额，本周期不会结算，会在下一轮继续补。');
+  }
+  return { generate: true, reason: first.reason || 'quota', scenes: scenes.slice(0, maxScenes) };
 }
 
 function bridgeRequest(type, payload = {}, timeout = 600000) {
@@ -1915,19 +1969,29 @@ async function onCharacterRendered(messageId, source) {
   if (key === lastMessageKey) return;
   lastMessageKey = key;
 
-  roundCounter += 1;
+  roundCounter = Math.min(roundCounter + 1, s.interval);
   renderControls();
 
+  const deadline = roundCounter >= s.interval;
   if (s.cycleSlotsUsed < s.count) {
-    const forceNow = s.mode === 'fixed' && roundCounter >= s.interval;
-    await runIllustration(Number(messageId), forceNow);
+    if (s.mode === 'fixed') {
+      // Fixed mode means exactly count images when the configured round arrives.
+      if (deadline) await runIllustration(Number(messageId), true);
+    } else {
+      // Smart mode may choose good moments early, but the final round must pay
+      // any remaining quota in full.
+      await runIllustration(Number(messageId), deadline);
+    }
   }
 
-  if (roundCounter >= s.interval) {
+  if (deadline && settings().cycleSlotsUsed >= s.count) {
     roundCounter = 0;
     settings().cycleSlotsUsed = 0;
     save();
   } else {
+    // If quota fill failed, keep the cycle overdue instead of erasing the debt.
+    if (deadline) roundCounter = s.interval;
+    save();
     renderControls();
   }
 }
