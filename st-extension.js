@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.55';
+const EXTENSION_ASSET_VERSION = '0.9.56';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -520,7 +520,7 @@ function createUi() {
   iframe = document.createElement('iframe');
   iframe.title = 'Isolde.nai 工作台';
   iframe.loading = 'eager';
-  iframe.src = new URL('./index.html?embed=1&ver=0.9.55', import.meta.url).href;
+  iframe.src = new URL('./index.html?embed=1&ver=0.9.56', import.meta.url).href;
   workbench.appendChild(iframe);
 
   iframeLoaded = new Promise((resolve) => { resolveIframeLoaded = resolve; });
@@ -873,6 +873,246 @@ function parseDirectorReply(raw, count, force, paragraphCount) {
   return { generate: generate && scenes.length > 0, reason: String((data && data.reason) || ''), scenes };
 }
 
+const VISUAL_TAG_STOPWORDS = new Set([
+  'masterpiece','best quality','very aesthetic','highres','ultra detailed','detailed',
+  'newest','year 2025','year 2026','amazing quality','absurdres','safe','sfw','nsfw'
+]);
+
+const VISUAL_CANONICAL_RULES = [
+  [/\b(?:embracing|embrace|cuddling|cuddle|hug|hugs)\b/g, 'hugging'],
+  [/\b(?:kisses|kissed|deep kiss|french kiss|tongue kiss)\b/g, 'kissing'],
+  [/\b(?:holding hands|hand holding|interlocked fingers)\b/g, 'holding hands'],
+  [/\b(?:touching (?:her |his |their )?face|cupping (?:her |his |their )?face|caressing (?:her |his |their )?face)\b/g, 'touching face'],
+  [/\b(?:looking at each other|eye contact|mutual gaze)\b/g, 'looking at each other'],
+  [/\b(?:lying down|laying down|on bed|lying on bed)\b/g, 'lying'],
+  [/\b(?:seated|sitting down)\b/g, 'sitting'],
+  [/\b(?:standing up)\b/g, 'standing'],
+  [/\b(?:close up|face focus|facial closeup)\b/g, 'close-up'],
+  [/\b(?:upper-body|upper body shot|bust shot|half body)\b/g, 'upper body'],
+  [/\b(?:wide angle|wide view|long shot)\b/g, 'wide shot'],
+  [/\b(?:bed room|bed chamber)\b/g, 'bedroom'],
+];
+
+function canonicalVisualText(value) {
+  let text = String(value || '')
+    .toLowerCase()
+    .replace(/\d+(?:\.\d+)?::/g, ' ')
+    .replace(/::/g, ' ')
+    .replace(/[_-]+/g, ' ')
+    .replace(/[^a-z0-9,\s]+/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  for (const [pattern, replacement] of VISUAL_CANONICAL_RULES) {
+    text = text.replace(pattern, replacement);
+  }
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function visualTagSet(scene) {
+  const tags = canonicalVisualText(scene && scene.prompt)
+    .split(',')
+    .map((tag) => tag.trim())
+    .filter((tag) => tag && tag.length > 1 && !VISUAL_TAG_STOPWORDS.has(tag));
+  return new Set(tags);
+}
+
+function sceneCharacterSet(scene) {
+  const characters = Array.isArray(scene && scene.characters) ? scene.characters : [];
+  return new Set(characters
+    .map((character) => canonicalVisualText((character && (character.anchor || character.name)) || ''))
+    .filter(Boolean));
+}
+
+const VISUAL_FEATURES = {
+  actions: [
+    ['kissing', /\b(?:kiss|kissing)\b/],
+    ['hugging', /\b(?:hugging|cuddle)\b/],
+    ['holding hands', /\bholding hands\b/],
+    ['touching face', /\btouching face\b/],
+    ['looking at each other', /\blooking at each other\b/],
+    ['sex', /\b(?:sex|penetration|penetrating|intercourse|vaginal|anal)\b/],
+    ['oral', /\b(?:oral|fellatio|blowjob|cunnilingus)\b/],
+    ['masturbation', /\b(?:masturbation|masturbating|handjob|fingering)\b/],
+    ['sleeping', /\b(?:sleeping|asleep)\b/],
+    ['eating', /\b(?:eating|feeding|drinking)\b/],
+    ['fighting', /\b(?:fighting|punching|kicking|sword fight|combat)\b/],
+    ['walking', /\bwalking\b/],
+    ['running', /\brunning\b/],
+    ['sitting', /\bsitting\b/],
+    ['standing', /\bstanding\b/],
+    ['lying', /\blying\b/],
+  ],
+  framing: [
+    ['close-up', /\bclose-up\b/],
+    ['upper body', /\bupper body\b/],
+    ['cowboy shot', /\bcowboy shot\b/],
+    ['full body', /\bfull body\b/],
+    ['wide shot', /\bwide shot\b/],
+    ['pov', /\bpov\b/],
+    ['from behind', /\b(?:from behind|rear view)\b/],
+    ['low angle', /\b(?:low angle|worm'?s eye)\b/],
+    ['high angle', /\b(?:high angle|bird'?s eye)\b/],
+    ['side view', /\b(?:side view|side angle|profile)\b/],
+  ],
+  setting: [
+    ['bedroom', /\b(?:bedroom|bed|bedsheets)\b/],
+    ['bathroom', /\b(?:bathroom|shower|bathtub)\b/],
+    ['living room', /\b(?:living room|sofa|couch)\b/],
+    ['kitchen', /\bkitchen\b/],
+    ['classroom', /\bclassroom\b/],
+    ['office', /\b(?:office|desk|workplace)\b/],
+    ['cafe', /\b(?:cafe|coffee shop)\b/],
+    ['restaurant', /\brestaurant\b/],
+    ['street', /\b(?:street|sidewalk|alley|road)\b/],
+    ['train', /\b(?:train|subway|railway|platform)\b/],
+    ['car', /\b(?:car interior|inside car|vehicle interior)\b/],
+    ['forest', /\b(?:forest|woods)\b/],
+    ['beach', /\b(?:beach|seaside|shore)\b/],
+    ['field', /\b(?:field|grassland|meadow)\b/],
+    ['rooftop', /\brooftop\b/],
+  ],
+};
+
+function sceneFeatureSet(scene, type) {
+  const characterPrompts = Array.isArray(scene && scene.characters)
+    ? scene.characters.map((character) => character && character.prompt).filter(Boolean).join(', ')
+    : '';
+  const text = canonicalVisualText(
+    type === 'setting' || type === 'framing'
+      ? (scene && scene.prompt)
+      : [scene && scene.prompt, characterPrompts].filter(Boolean).join(', ')
+  );
+  const features = VISUAL_FEATURES[type] || [];
+  return new Set(features.filter(([, pattern]) => pattern.test(text)).map(([name]) => name));
+}
+
+function setJaccard(left, right) {
+  if (!left.size && !right.size) return 0;
+  let intersection = 0;
+  for (const value of left) if (right.has(value)) intersection += 1;
+  return intersection / (left.size + right.size - intersection);
+}
+
+function setsOverlap(left, right) {
+  if (!left.size || !right.size) return false;
+  for (const value of left) if (right.has(value)) return true;
+  return false;
+}
+
+function compareVisualScenes(leftScene, rightScene, sameMessage = false) {
+  const leftCharacters = sceneCharacterSet(leftScene);
+  const rightCharacters = sceneCharacterSet(rightScene);
+  const characterScore = setJaccard(leftCharacters, rightCharacters);
+  const sameCharacters = leftCharacters.size && rightCharacters.size
+    ? characterScore >= 0.8
+    : true;
+
+  const leftActions = sceneFeatureSet(leftScene, 'actions');
+  const rightActions = sceneFeatureSet(rightScene, 'actions');
+  const leftFraming = sceneFeatureSet(leftScene, 'framing');
+  const rightFraming = sceneFeatureSet(rightScene, 'framing');
+  const leftSetting = sceneFeatureSet(leftScene, 'setting');
+  const rightSetting = sceneFeatureSet(rightScene, 'setting');
+
+  const actionOverlap = setsOverlap(leftActions, rightActions);
+  const framingOverlap = setsOverlap(leftFraming, rightFraming);
+  const settingOverlap = setsOverlap(leftSetting, rightSetting);
+  const lexicalScore = setJaccard(visualTagSet(leftScene), visualTagSet(rightScene));
+  const sameParagraph = sameMessage
+    && Number(leftScene && leftScene.afterParagraph) === Number(rightScene && rightScene.afterParagraph);
+
+  let duplicate = false;
+  const reasons = [];
+
+  if (sameCharacters && lexicalScore >= 0.62) {
+    duplicate = true;
+    reasons.push('scene tags overlap ' + lexicalScore.toFixed(2));
+  }
+  if (sameCharacters && actionOverlap && framingOverlap && settingOverlap) {
+    duplicate = true;
+    reasons.push('same characters/action/framing/setting');
+  }
+  if (sameCharacters && actionOverlap && lexicalScore >= 0.42 && sameParagraph) {
+    duplicate = true;
+    reasons.push('same paragraph/action with similar tags');
+  }
+  if (sameCharacters && actionOverlap && framingOverlap && lexicalScore >= 0.36) {
+    duplicate = true;
+    reasons.push('same action/framing with similar tags');
+  }
+
+  return { duplicate, reasons, lexicalScore };
+}
+
+function recentCycleAcceptedScenes(messageId) {
+  const context = getContext();
+  const chat = (context && context.chat) || [];
+  const needed = clampInt(settings().cycleSlotsUsed, 0, 12, 0);
+  if (!needed) return [];
+
+  const found = [];
+  for (let id = Number(messageId) - 1; id >= 0 && found.length < needed; id--) {
+    const message = chat[id];
+    if (!message || message.is_user || message.is_system || !message.extra) continue;
+
+    const slots = Array.isArray(message.extra.isolde_pending_scenes)
+      ? message.extra.isolde_pending_scenes
+      : [];
+    for (let index = slots.length - 1; index >= 0 && found.length < needed; index--) {
+      const item = slots[index];
+      if (!item || !item.prompt) continue;
+      found.push({
+        messageId: id,
+        scene: {
+          prompt: String(item.prompt || ''),
+          afterParagraph: Number(item.afterParagraph) || 0,
+          characters: cleanSceneCharacters(item.characters),
+        },
+      });
+    }
+
+    const media = Array.isArray(message.extra.media) ? message.extra.media : [];
+    for (let index = media.length - 1; index >= 0 && found.length < needed; index--) {
+      const item = media[index];
+      if (!item || item.source !== 'Isolde.nai' || !item.isolde_scene_prompt) continue;
+      found.push({
+        messageId: id,
+        scene: {
+          prompt: String(item.isolde_scene_prompt || ''),
+          afterParagraph: Number(item.isolde_after_paragraph) || 0,
+          characters: cleanSceneCharacters(item.isolde_characters),
+        },
+      });
+    }
+  }
+  return found;
+}
+
+function acceptDistinctScenes(candidates, acceptedRefs, messageId) {
+  const accepted = [];
+  const rejected = [];
+  for (const scene of Array.isArray(candidates) ? candidates : []) {
+    let duplicateOf = null;
+    for (const ref of [...acceptedRefs, ...accepted.map((item) => ({ messageId, scene: item }))]) {
+      const result = compareVisualScenes(scene, ref.scene, Number(ref.messageId) === Number(messageId));
+      if (result.duplicate) {
+        duplicateOf = { ref, result };
+        break;
+      }
+    }
+    if (duplicateOf) rejected.push({ scene, duplicateOf });
+    else accepted.push(scene);
+  }
+  return { accepted, rejected };
+}
+
+function directorSceneSummary(ref, index) {
+  const scene = ref && ref.scene ? ref.scene : ref;
+  const names = [...sceneCharacterSet(scene)].join(' + ');
+  const prompt = String((scene && scene.prompt) || '').replace(/\s+/g, ' ').trim().slice(0, 320);
+  return (index + 1) + '. ' + (names ? '[' + names + '] ' : '') + prompt;
+}
+
 async function planScenes(messageId, force, maxScenes = 1) {
   setState('judging', force ? '正在补齐本周期配额…' : '正在判断这一幕…');
   let anchorEntries = [];
@@ -890,6 +1130,8 @@ async function planScenes(messageId, force, maxScenes = 1) {
     worldInfo,
   };
   const paragraphCount = latestParagraphs(messageId).length;
+  const priorScenes = recentCycleAcceptedScenes(messageId);
+
   const ask = async (count, mustFill, extraInstruction = '') => {
     const base = directorPrompt(messageId, mustFill, anchorEntries, sourceContext, count);
     const quietPrompt = extraInstruction ? base + '\n\n' + extraInstruction : base;
@@ -898,53 +1140,100 @@ async function planScenes(messageId, force, maxScenes = 1) {
   };
 
   const first = await ask(maxScenes, force);
-  if (!force) return first;
+  if (!first.generate) return first;
 
-  const scenes = [...first.scenes].slice(0, maxScenes);
-  if (scenes.length >= maxScenes) {
-    return { generate: true, reason: first.reason || 'quota', scenes };
+  // In smart mode the director may voluntarily choose fewer than maxScenes.
+  // Once it chose N scenes, however, duplicate rejection should replace those
+  // rejected slots instead of silently shrinking the batch.
+  const targetCount = force
+    ? maxScenes
+    : Math.min(maxScenes, Math.max(1, first.scenes.length));
+
+  let check = acceptDistinctScenes(first.scenes.slice(0, targetCount), priorScenes, messageId);
+  const scenes = [...check.accepted];
+
+  if (check.rejected.length) {
+    console.info('[Isolde.nai] duplicate scene candidates rejected', check.rejected.map((item) => ({
+      prompt: item.scene.prompt,
+      reasons: item.duplicateOf.result.reasons,
+    })));
   }
 
-  // The quota is a hard user setting. If the director under-returns, ask only
-  // for the missing scenes and preserve the valid scenes already received.
-  let missing = maxScenes - scenes.length;
-  if (missing > 0) {
-    const existing = scenes.map((scene, index) => (index + 1) + '. ' + scene.prompt).join('\n');
-    const supplement = await ask(
+  // Replace only rejected/missing slots. Accepted scenes stay untouched.
+  // Two batch repair passes are enough for normal cases without creating an
+  // unbounded director loop.
+  for (let attempt = 0; attempt < 2 && scenes.length < targetCount; attempt++) {
+    const missing = targetCount - scenes.length;
+    const acceptedRefs = [
+      ...priorScenes,
+      ...scenes.map((scene) => ({ messageId, scene })),
+    ];
+    const avoid = acceptedRefs.map(directorSceneSummary).join('\n');
+    const repair = await ask(
       missing,
       true,
       [
-        'Your previous response under-filled the hard quota.',
-        'Return exactly ' + missing + ' additional scene object' + (missing === 1 ? '' : 's') + ' only.',
-        'Do not repeat these already accepted scenes:',
-        existing || '(none)',
+        'Some scene candidates were rejected because they were visually too similar to scenes already accepted in this image cycle.',
+        'Return exactly ' + missing + ' replacement scene object' + (missing === 1 ? '' : 's') + '.',
+        'Each replacement must differ materially in at least two of these dimensions: main action, framing/camera, staging/body position, or setting.',
+        'Do not merely swap synonyms such as hugging/embracing or close-up/face focus.',
+        'Avoid these accepted scenes:',
+        avoid || '(none)',
       ].join('\n'),
     );
-    scenes.push(...supplement.scenes.slice(0, missing));
+
+    check = acceptDistinctScenes(repair.scenes.slice(0, missing), acceptedRefs, messageId);
+    scenes.push(...check.accepted);
+    if (check.rejected.length) {
+      console.info('[Isolde.nai] duplicate replacement scenes rejected', check.rejected.map((item) => ({
+        prompt: item.scene.prompt,
+        reasons: item.duplicateOf.result.reasons,
+      })));
+    }
   }
 
-  // Last-resort per-scene repair: a model that keeps returning one item cannot
-  // silently shrink the user's configured count.
-  missing = maxScenes - scenes.length;
-  for (let i = 0; i < missing; i++) {
-    const existing = scenes.map((scene, index) => (index + 1) + '. ' + scene.prompt).join('\n');
-    const one = await ask(
-      1,
-      true,
-      [
-        'One quota slot is still missing.',
-        'Return exactly one new scene object.',
-        'It must be distinct from these accepted scenes:',
-        existing || '(none)',
-      ].join('\n'),
-    );
-    if (one.scenes[0]) scenes.push(one.scenes[0]);
+  // Hard quota cycles must not settle with duplicates or missing images.
+  // Repair one slot at a time as a final fallback.
+  if (force) {
+    while (scenes.length < targetCount) {
+      const acceptedRefs = [
+        ...priorScenes,
+        ...scenes.map((scene) => ({ messageId, scene })),
+      ];
+      const avoid = acceptedRefs.map(directorSceneSummary).join('\n');
+      const one = await ask(
+        1,
+        true,
+        [
+          'One hard-quota image slot is still missing because previous candidates were duplicates.',
+          'Return exactly one visually distinct scene.',
+          'Change the main action, camera/framing, staging/body position, or setting substantially.',
+          'Avoid these accepted scenes:',
+          avoid || '(none)',
+        ].join('\n'),
+      );
+      const oneCheck = acceptDistinctScenes(one.scenes.slice(0, 1), acceptedRefs, messageId);
+      if (oneCheck.accepted[0]) {
+        scenes.push(oneCheck.accepted[0]);
+        continue;
+      }
+      throw new Error('导演反复给出重复场景，本周期不会结算，会在下一轮继续补。');
+    }
   }
 
-  if (scenes.length < maxScenes) {
+  if (!scenes.length) {
+    return { generate: false, reason: '候选场景与本周期已有画面重复，已过滤', scenes: [] };
+  }
+
+  if (force && scenes.length < maxScenes) {
     throw new Error('导演没有补齐设定的 ' + maxScenes + ' 张配额，本周期不会结算，会在下一轮继续补。');
   }
-  return { generate: true, reason: first.reason || 'quota', scenes: scenes.slice(0, maxScenes) };
+
+  return {
+    generate: true,
+    reason: first.reason || (check.rejected.length ? 'deduplicated' : ''),
+    scenes: scenes.slice(0, targetCount),
+  };
 }
 
 function bridgeRequest(type, payload = {}, timeout = 600000) {
