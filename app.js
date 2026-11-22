@@ -37,6 +37,7 @@ const els = {
   outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
   workbenchOutfitPicker: $('workbenchOutfitPicker'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
+  galleryViewer: $('galleryViewer'), galleryViewerImage: $('galleryViewerImage'), galleryViewerClose: $('galleryViewerClose'), galleryViewerPrev: $('galleryViewerPrev'), galleryViewerNext: $('galleryViewerNext'), galleryViewerCounter: $('galleryViewerCounter'), galleryViewerMeta: $('galleryViewerMeta'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
   apiPresetSelect: $('apiPresetSelect'), renameApiPresetBtn: $('renameApiPresetBtn'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
   renameApiPresetDialog: $('renameApiPresetDialog'), renameApiPresetForm: $('renameApiPresetForm'), renameApiPresetInput: $('renameApiPresetInput'), saveApiPresetNameBtn: $('saveApiPresetNameBtn'),
@@ -59,6 +60,11 @@ let selectedAnchorIds = [];
 let selectedOutfitIds = {};
 let galleryBatchMode = false;
 let selectedGalleryIds = new Set();
+let galleryViewerItems = [];
+let galleryViewerIndex = -1;
+let galleryViewerObjectUrl = null;
+let galleryViewerPointerStartX = null;
+let galleryViewerPointerStartY = null;
 let pendingDeleteAction = null;
 let currentObjectUrl = null;
 let currentResultBlob = null;
@@ -2819,6 +2825,84 @@ function applyGalleryMeta(item){
   els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
 renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.seed||'gallery');goView('workbench');
 }
+
+function closeGalleryViewer(){
+  if(!els.galleryViewer) return;
+  els.galleryViewer.classList.remove('open');
+  els.galleryViewer.setAttribute('aria-hidden','true');
+  document.documentElement.classList.remove('gallery-viewer-open');
+  document.body.classList.remove('gallery-viewer-open');
+  if(galleryViewerObjectUrl){
+    URL.revokeObjectURL(galleryViewerObjectUrl);
+    galleryViewerObjectUrl=null;
+  }
+  if(els.galleryViewerImage) els.galleryViewerImage.removeAttribute('src');
+  galleryViewerIndex=-1;
+}
+
+function galleryViewerMove(delta){
+  if(!galleryViewerItems.length) return;
+  const next=(galleryViewerIndex+delta+galleryViewerItems.length)%galleryViewerItems.length;
+  showGalleryViewerItem(next);
+}
+
+function showGalleryViewerItem(index){
+  if(!els.galleryViewer||!galleryViewerItems.length) return;
+  const count=galleryViewerItems.length;
+  galleryViewerIndex=((Number(index)||0)%count+count)%count;
+  const item=galleryViewerItems[galleryViewerIndex];
+
+  if(galleryViewerObjectUrl) URL.revokeObjectURL(galleryViewerObjectUrl);
+  galleryViewerObjectUrl=URL.createObjectURL(item.blob);
+  els.galleryViewerImage.src=galleryViewerObjectUrl;
+  els.galleryViewerImage.alt=`图库图片 ${galleryViewerIndex+1}/${count}`;
+  els.galleryViewerCounter.textContent=`${galleryViewerIndex+1} / ${count}`;
+  els.galleryViewerMeta.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;
+  const multiple=count>1;
+  els.galleryViewerPrev.classList.toggle('hidden',!multiple);
+  els.galleryViewerNext.classList.toggle('hidden',!multiple);
+}
+
+function openGalleryViewer(items,index){
+  if(!els.galleryViewer||!Array.isArray(items)||!items.length) return;
+  galleryViewerItems=items;
+  els.galleryViewer.classList.add('open');
+  els.galleryViewer.setAttribute('aria-hidden','false');
+  document.documentElement.classList.add('gallery-viewer-open');
+  document.body.classList.add('gallery-viewer-open');
+  showGalleryViewerItem(index);
+}
+
+function initGalleryViewer(){
+  if(!els.galleryViewer) return;
+  els.galleryViewerClose?.addEventListener('click',closeGalleryViewer);
+  els.galleryViewerPrev?.addEventListener('click',()=>galleryViewerMove(-1));
+  els.galleryViewerNext?.addEventListener('click',()=>galleryViewerMove(1));
+  els.galleryViewer.addEventListener('click',(event)=>{
+    if(event.target===els.galleryViewer) closeGalleryViewer();
+  });
+  els.galleryViewer.addEventListener('pointerdown',(event)=>{
+    if(event.pointerType==='mouse') return;
+    galleryViewerPointerStartX=event.clientX;
+    galleryViewerPointerStartY=event.clientY;
+  },{passive:true});
+  els.galleryViewer.addEventListener('pointerup',(event)=>{
+    if(galleryViewerPointerStartX===null||galleryViewerPointerStartY===null) return;
+    const dx=event.clientX-galleryViewerPointerStartX;
+    const dy=event.clientY-galleryViewerPointerStartY;
+    galleryViewerPointerStartX=null;
+    galleryViewerPointerStartY=null;
+    if(Math.abs(dx)<54||Math.abs(dx)<=Math.abs(dy)*1.15) return;
+    galleryViewerMove(dx<0?1:-1);
+  },{passive:true});
+  window.addEventListener('keydown',(event)=>{
+    if(!els.galleryViewer.classList.contains('open')) return;
+    if(event.key==='Escape') closeGalleryViewer();
+    else if(event.key==='ArrowLeft') galleryViewerMove(-1);
+    else if(event.key==='ArrowRight') galleryViewerMove(1);
+  });
+}
+
 async function renderGallery(){
   els.galleryGrid.innerHTML='';
   try{
@@ -2839,7 +2923,7 @@ async function renderGallery(){
 
       const ib=document.createElement('button');ib.type='button';ib.className='gallery-image-btn';
       const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);
-      ib.addEventListener('click',()=>{ if(galleryBatchMode)setGallerySelected(card,item.id,!selectedGalleryIds.has(item.id)); else applyGalleryMeta(item); });
+      ib.addEventListener('click',()=>{ if(galleryBatchMode)setGallerySelected(card,item.id,!selectedGalleryIds.has(item.id)); else openGalleryViewer(items,items.findIndex(entry=>entry.id===item.id)); });
       card.appendChild(ib);
 
       const cancel=document.createElement('button');cancel.type='button';cancel.className='gallery-selection-cancel'+(selected?'':' hidden');cancel.textContent='取消';
@@ -3660,6 +3744,7 @@ window.addEventListener('message',async(event)=>{
   }
 });
 
+initGalleryViewer();
 loadState();
 window.addEventListener('pageshow',()=>{
   requestAnimationFrame(()=>{
