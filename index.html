@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=54" />
+  <link rel="stylesheet" href="./app.css?v=55" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -711,7 +711,23 @@
     </form>
   </dialog>
 
+  <div id="galleryViewer" class="gallery-viewer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="图库大图预览">
+    <div class="gallery-viewer-top">
+      <div>
+        <strong id="galleryViewerCounter">1 / 1</strong>
+        <span id="galleryViewerMeta"></span>
+      </div>
+      <button id="galleryViewerClose" class="gallery-viewer-close" type="button" aria-label="关闭大图">×</button>
+    </div>
+    <button id="galleryViewerPrev" class="gallery-viewer-nav gallery-viewer-prev" type="button" aria-label="上一张">‹</button>
+    <div class="gallery-viewer-stage">
+      <img id="galleryViewerImage" alt="图库大图" draggable="false" />
+    </div>
+    <button id="galleryViewerNext" class="gallery-viewer-nav gallery-viewer-next" type="button" aria-label="下一张">›</button>
+    <div class="gallery-viewer-swipe-hint">左右滑动切换</div>
+  </div>
+
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=89"></script>
+  <script type="module" src="./app.js?v=90"></script>
 </body>
 </html>
