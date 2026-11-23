@@ -111,7 +111,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=93',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=94',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -2764,9 +2764,41 @@ async function deleteGalleryBridgeItem({galleryId=null,seed='',scenePrompt=''}={
 async function getGallery(){
   const db=await openDb();const items=await new Promise((resolve,reject)=>{const tx=db.transaction('history','readonly');const req=tx.objectStore('history').getAll();req.onsuccess=()=>resolve(req.result||[]);req.onerror=()=>reject(req.error);});db.close();return items.sort((a,b)=>(b.id||0)-(a.id||0));
 }
-async function deleteGalleryItem(id){
+function restoreGalleryScroll(scrollLeft,scrollTop){
+  requestAnimationFrame(()=>requestAnimationFrame(()=>window.scrollTo(scrollLeft,scrollTop)));
+}
+function syncGalleryGridState(){
+  const remaining=els.galleryGrid.querySelectorAll('.gallery-card').length;
+  els.galleryCount.textContent=`${remaining} 张 · 保存在此设备`;
+  if(!remaining&&!els.galleryGrid.querySelector('.empty-note')){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';
+    els.galleryGrid.appendChild(note);
+  }
+  return remaining;
+}
+function setGalleryBatchMode(enabled){
+  galleryBatchMode=Boolean(enabled);
+  if(!galleryBatchMode) selectedGalleryIds.clear();
+  els.galleryGrid.querySelectorAll('.gallery-card').forEach(card=>{
+    card.classList.toggle('gallery-batch-mode',galleryBatchMode);
+    if(!galleryBatchMode){
+      card.classList.remove('gallery-selected');
+      card.querySelector('.gallery-selection-cancel')?.classList.add('hidden');
+    }
+  });
+  updateBatchDeleteButton();
+}
+async function deleteGalleryItem(id,card){
+  const scrollTop=window.scrollY;
+  const scrollLeft=window.scrollX;
   await deleteGalleryRecord(id);
-  await renderGallery();
+  selectedGalleryIds.delete(id);
+  if(card?.isConnected) card.remove();
+  syncGalleryGridState();
+  updateBatchDeleteButton();
+  restoreGalleryScroll(scrollLeft,scrollTop);
 }
 function updateBatchDeleteButton(){
   if(!els.batchDeleteGalleryBtn) return;
@@ -2784,6 +2816,9 @@ function setGallerySelected(card,id,selected){
 async function deleteSelectedGalleryItems(){
   const ids=[...selectedGalleryIds];
   if(!ids.length)return;
+  const scrollTop=window.scrollY;
+  const scrollLeft=window.scrollX;
+  const idSet=new Set(ids.map(id=>String(id)));
   const db=await openDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction('history','readwrite');
@@ -2794,9 +2829,12 @@ async function deleteSelectedGalleryItems(){
     tx.onabort=()=>reject(tx.error||new Error('批量删除失败'));
   });
   db.close();
-  selectedGalleryIds.clear();
-  galleryBatchMode=false;
-  await renderGallery();
+  els.galleryGrid.querySelectorAll('.gallery-card').forEach(card=>{
+    if(idSet.has(card.dataset.galleryId||'')) card.remove();
+  });
+  setGalleryBatchMode(false);
+  syncGalleryGridState();
+  restoreGalleryScroll(scrollLeft,scrollTop);
   showToast(`已删除 ${ids.length} 张图片`);
 }
 function applyGalleryMeta(item){
@@ -2916,7 +2954,7 @@ async function renderGallery(){
       const note=document.createElement('div');note.className='empty-note';note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';els.galleryGrid.appendChild(note);return;
     }
     for(const item of items){
-      const card=document.createElement('article');card.className='gallery-card';
+      const card=document.createElement('article');card.className='gallery-card';card.dataset.galleryId=String(item.id);
       if(galleryBatchMode)card.classList.add('gallery-batch-mode');
       const selected=selectedGalleryIds.has(item.id);
       if(selected)card.classList.add('gallery-selected');
@@ -2940,7 +2978,7 @@ async function renderGallery(){
         title:'删除这张图片？',
         message:'这张图片会从当前设备的图库中删除。',
         confirmText:'确认删除',
-        action:async()=>{await deleteGalleryItem(item.id);showToast('图片已删除');}
+        action:async()=>{await deleteGalleryItem(item.id,card);showToast('图片已删除');}
       })));
       meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
     }
@@ -3483,10 +3521,10 @@ els.saveSettingsBtn.addEventListener('click',()=>{
 });
 els.batchDeleteGalleryBtn?.addEventListener('click',()=>{
   if(!galleryBatchMode){
-    galleryBatchMode=true;selectedGalleryIds.clear();renderGallery();return;
+    selectedGalleryIds.clear();setGalleryBatchMode(true);return;
   }
   if(!selectedGalleryIds.size){
-    galleryBatchMode=false;renderGallery();return;
+    setGalleryBatchMode(false);return;
   }
   const count=selectedGalleryIds.size;
   requestDeleteConfirmation({
