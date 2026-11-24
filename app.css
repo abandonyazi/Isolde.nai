@@ -1137,37 +1137,28 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
 }
 
 
-/* v56: gallery preset filter + 30-item pagination */
+/* v57: gallery filter + pagination above grid */
 .gallery-toolbar{
   display:flex;
-  align-items:flex-end;
-  justify-content:space-between;
-  gap:12px;
-  margin:2px 0 14px;
+  justify-content:flex-end;
+  margin:2px 0 10px;
 }
 .gallery-filter-field{
   display:grid;
   gap:6px;
-  flex:1 1 320px;
-  max-width:440px;
+  width:min(100%,240px);
   min-width:0;
 }
 .gallery-filter-field>span{
   color:var(--muted);
   font-size:12px;
   line-height:1.2;
+  text-align:right;
 }
 .gallery-filter-field select{
   min-height:42px;
   border-radius:13px;
   background:var(--card);
-}
-.gallery-page-size{
-  flex:0 0 auto;
-  padding-bottom:12px;
-  color:var(--muted);
-  font-size:11px;
-  white-space:nowrap;
 }
 .gallery-empty-note{
   grid-column:1/-1;
@@ -1177,19 +1168,23 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
 .gallery-pagination{
   display:flex;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
   gap:8px;
-  margin:18px 0 4px;
+  margin:0 0 14px;
   min-height:38px;
+  overflow-x:auto;
+  scrollbar-width:none;
 }
+.gallery-pagination::-webkit-scrollbar{display:none}
 .gallery-page-numbers{
   display:flex;
   align-items:center;
-  justify-content:center;
+  justify-content:flex-start;
   gap:6px;
-  min-width:0;
+  min-width:max-content;
 }
 .gallery-page-btn{
+  flex:0 0 auto;
   min-width:36px;
   height:36px;
   padding:0 9px;
@@ -1210,16 +1205,16 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   opacity:.35;
 }
 .gallery-page-dots{
+  flex:0 0 auto;
   width:20px;
   text-align:center;
   color:var(--muted);
   font-size:12px;
 }
 @media(max-width:430px){
-  .gallery-toolbar{align-items:stretch;gap:9px}
-  .gallery-filter-field{flex-basis:auto}
-  .gallery-page-size{display:none}
-  .gallery-pagination{gap:5px;margin-top:16px}
+  .gallery-toolbar{margin-bottom:9px}
+  .gallery-filter-field{width:min(62vw,220px)}
+  .gallery-pagination{gap:5px;margin-bottom:12px}
   .gallery-page-numbers{gap:4px}
   .gallery-page-btn{min-width:32px;height:34px;padding:0 7px;border-radius:10px}
   .gallery-page-dots{width:14px}
