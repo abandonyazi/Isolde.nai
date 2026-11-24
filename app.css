@@ -1135,3 +1135,92 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
 @media(hover:none) and (pointer:coarse){
   .gallery-viewer-nav{opacity:.54;}
 }
+
+
+/* v56: gallery preset filter + 30-item pagination */
+.gallery-toolbar{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  margin:2px 0 14px;
+}
+.gallery-filter-field{
+  display:grid;
+  gap:6px;
+  flex:1 1 320px;
+  max-width:440px;
+  min-width:0;
+}
+.gallery-filter-field>span{
+  color:var(--muted);
+  font-size:12px;
+  line-height:1.2;
+}
+.gallery-filter-field select{
+  min-height:42px;
+  border-radius:13px;
+  background:var(--card);
+}
+.gallery-page-size{
+  flex:0 0 auto;
+  padding-bottom:12px;
+  color:var(--muted);
+  font-size:11px;
+  white-space:nowrap;
+}
+.gallery-empty-note{
+  grid-column:1/-1;
+  padding:26px 8px;
+  text-align:center;
+}
+.gallery-pagination{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:8px;
+  margin:18px 0 4px;
+  min-height:38px;
+}
+.gallery-page-numbers{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  gap:6px;
+  min-width:0;
+}
+.gallery-page-btn{
+  min-width:36px;
+  height:36px;
+  padding:0 9px;
+  border:1px solid var(--line);
+  border-radius:11px;
+  background:var(--card);
+  color:var(--text);
+  font-size:12px;
+  font-variant-numeric:tabular-nums;
+}
+.gallery-page-btn.active{
+  border-color:rgba(97,128,157,.36);
+  background:var(--accent-soft);
+  color:var(--accent-strong);
+  font-weight:700;
+}
+.gallery-page-btn:disabled{
+  opacity:.35;
+}
+.gallery-page-dots{
+  width:20px;
+  text-align:center;
+  color:var(--muted);
+  font-size:12px;
+}
+@media(max-width:430px){
+  .gallery-toolbar{align-items:stretch;gap:9px}
+  .gallery-filter-field{flex-basis:auto}
+  .gallery-page-size{display:none}
+  .gallery-pagination{gap:5px;margin-top:16px}
+  .gallery-page-numbers{gap:4px}
+  .gallery-page-btn{min-width:32px;height:34px;padding:0 7px;border-radius:10px}
+  .gallery-page-dots{width:14px}
+}
