@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=59" />
+  <link rel="stylesheet" href="./app.css?v=60" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -432,9 +432,9 @@
                 </label>
               </div>
 
-              <input id="vibeFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp,.json,.naiv4vibe,.naiv4vibeBundle" />
+              <input id="vibeFile" class="watermark-file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,.json,.naiv4vibe,.naiv4vibeBundle" />
               <div class="reference-actions">
-                <button id="uploadVibeBtn" class="secondary-btn" type="button">导入 Vibe / JSON</button>
+                <button id="uploadVibeBtn" class="secondary-btn" type="button">＋ 添加 Vibe / JSON</button>
                 <button id="removeVibeBtn" class="text-btn danger" type="button" disabled>移除</button>
               </div>
 
@@ -443,6 +443,9 @@
                 <span id="vibeStatus"></span>
               </div>
 
+              <div id="vibeStackSummary" class="vibe-stack-summary hidden"></div>
+              <div id="vibeItemsEditor" class="vibe-items-editor hidden"></div>
+
               <label class="field compact-field">
                 <span>Vibe 预设</span>
                 <select id="vibePresetSelect">
@@ -450,6 +453,8 @@
                 </select>
               </label>
               <div class="reference-actions">
+                <button id="loadVibePresetBtn" class="secondary-btn" type="button" disabled>载入预设</button>
+                <button id="appendVibePresetBtn" class="secondary-btn" type="button" disabled>追加预设</button>
                 <button id="saveVibePresetBtn" class="secondary-btn" type="button">保存当前为预设</button>
                 <button id="deleteVibePresetBtn" class="text-btn danger" type="button" disabled>删除预设</button>
               </div>
@@ -737,6 +742,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=96"></script>
+  <script type="module" src="./app.js?v=97"></script>
 </body>
 </html>
