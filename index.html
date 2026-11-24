@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=58" />
+  <link rel="stylesheet" href="./app.css?v=59" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -420,11 +420,11 @@
               </label>
             </section>
 
-            <section class="reference-panel vibe-panel">
+            <section class="reference-panel">
               <div class="reference-panel-head">
                 <div>
                   <strong>Vibe Transfer</strong>
-                  <p>最多叠加 16 个 Vibe，每个都可以单独调参数。</p>
+                  <p>提取配色、质感与整体气氛。</p>
                 </div>
                 <label class="mini-switch">
                   <input id="vibeEnabled" type="checkbox" />
@@ -432,14 +432,16 @@
                 </label>
               </div>
 
-              <input id="vibeFile" class="watermark-file-input" type="file" multiple accept="image/png,image/jpeg,image/webp,.json,.naiv4vibe,.naiv4vibeBundle" />
+              <input id="vibeFile" class="watermark-file-input" type="file" accept="image/png,image/jpeg,image/webp,.json,.naiv4vibe,.naiv4vibeBundle" />
               <div class="reference-actions">
-                <button id="uploadVibeBtn" class="secondary-btn" type="button">＋ 添加 Vibe</button>
-                <button id="removeVibeBtn" class="text-btn danger" type="button" disabled>清空</button>
+                <button id="uploadVibeBtn" class="secondary-btn" type="button">导入 Vibe / JSON</button>
+                <button id="removeVibeBtn" class="text-btn danger" type="button" disabled>移除</button>
               </div>
 
-              <div id="vibeSummary" class="vibe-summary">还没有 Vibe</div>
-              <div id="vibeList" class="vibe-list"></div>
+              <div id="vibePreviewWrap" class="reference-preview hidden">
+                <img id="vibePreview" alt="Vibe 预览" />
+                <span id="vibeStatus"></span>
+              </div>
 
               <label class="field compact-field">
                 <span>Vibe 预设</span>
@@ -447,13 +449,23 @@
                   <option value="">未选择预设</option>
                 </select>
               </label>
-              <div class="reference-actions vibe-preset-actions">
-                <button id="loadVibePresetBtn" class="secondary-btn" type="button" disabled>载入预设</button>
-                <button id="appendVibePresetBtn" class="secondary-btn" type="button" disabled>追加到当前</button>
-                <button id="saveVibePresetBtn" class="secondary-btn" type="button">保存当前组合</button>
+              <div class="reference-actions">
+                <button id="saveVibePresetBtn" class="secondary-btn" type="button">保存当前为预设</button>
                 <button id="deleteVibePresetBtn" class="text-btn danger" type="button" disabled>删除预设</button>
               </div>
-              <p class="reference-note">总 Strength 建议控制在 1.00 左右；超过 1.00 时生成会自动归一化。同一张图 + 同一 Information 会缓存编码，避免重复付 Vibe 编码费。</p>
+
+              <label class="reference-slider">
+                <span>Strength</span>
+                <input id="vibeStrength" type="range" min="0" max="1" step="0.05" value="0.6" />
+                <strong id="vibeStrengthValue">0.60</strong>
+              </label>
+
+              <label class="reference-slider">
+                <span>Information</span>
+                <input id="vibeInformation" type="range" min="0.05" max="1" step="0.05" value="0.7" />
+                <strong id="vibeInformationValue">0.70</strong>
+              </label>
+              <p class="reference-note">同一张图 + 同一 Information 会缓存编码，避免重复付 Vibe 编码费。</p>
             </section>
           </div>
         
@@ -725,6 +737,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=95"></script>
+  <script type="module" src="./app.js?v=96"></script>
 </body>
 </html>
