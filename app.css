@@ -95,7 +95,31 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
 .result-area { margin:14px 0; }
 .empty-result { min-height:230px; display:grid; place-items:center; align-content:center; gap:8px; border:1px dashed rgba(97,128,157,.28); border-radius:22px; color:var(--muted); background:rgba(247,250,253,.60); }
 .empty-orb { width:52px; height:52px; border-radius:50%; display:grid; place-items:center; background:var(--accent-soft); color:var(--accent-strong); font-size:22px; }
+.result-image-stage { position:relative; }
 .result-wrap img { width:100%; display:block; border-radius:22px; background:rgba(145,179,207,.18); }
+.result-delete-btn {
+  position:absolute;
+  top:12px;
+  right:12px;
+  z-index:2;
+  min-width:48px;
+  height:34px;
+  padding:0 12px;
+  border:1px solid rgba(255,255,255,.35);
+  border-radius:999px;
+  background:rgba(18,28,38,.58);
+  color:#fff;
+  font-size:12px;
+  font-weight:650;
+  line-height:1;
+  box-shadow:0 5px 16px rgba(18,28,38,.16);
+  backdrop-filter:blur(10px);
+  -webkit-backdrop-filter:blur(10px);
+}
+.result-delete-btn:active { transform:scale(.96); }
+@media(max-width:560px){
+  .result-delete-btn { top:10px; right:10px; min-width:46px; height:32px; padding:0 11px; }
+}
 .result-actions { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:10px; margin-top:12px; }
 .result-actions .secondary-btn { width:100%; min-height:46px; padding:0 10px; border-radius:14px; font-size:14px; white-space:nowrap; }
 .result-area + .generate-btn { margin-top:12px; }
