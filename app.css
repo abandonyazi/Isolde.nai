@@ -1219,3 +1219,87 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   .gallery-page-btn{min-width:32px;height:34px;padding:0 7px;border-radius:10px}
   .gallery-page-dots{width:14px}
 }
+
+
+/* v60: isolated Multivibe editor */
+.vibe-stack-summary{
+  margin-top:10px;
+  padding:9px 11px;
+  border:1px solid var(--line);
+  border-radius:12px;
+  background:rgba(247,250,253,.56);
+  color:var(--muted);
+  font-size:11px;
+  font-variant-numeric:tabular-nums;
+}
+.vibe-stack-summary.warning{
+  border-color:rgba(201,108,103,.3);
+  background:rgba(201,108,103,.07);
+  color:var(--danger);
+}
+.vibe-items-editor{
+  display:grid;
+  gap:8px;
+  margin-top:9px;
+}
+.vibe-stack-item{
+  padding:10px;
+  border:1px solid var(--line);
+  border-radius:13px;
+  background:rgba(247,250,253,.5);
+  transition:opacity .15s ease;
+}
+.vibe-stack-item.disabled{opacity:.5}
+.vibe-stack-item-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+}
+.vibe-stack-item-head>strong{
+  min-width:0;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:11px;
+}
+.vibe-stack-item-actions{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  flex:0 0 auto;
+}
+.vibe-stack-item-actions .text-btn{
+  padding:4px 2px;
+  font-size:10px;
+}
+.vibe-stack-slider{
+  display:grid;
+  grid-template-columns:72px minmax(0,1fr) 36px;
+  align-items:center;
+  gap:8px;
+  margin-top:8px;
+  color:var(--text);
+  font-size:10px;
+}
+.vibe-stack-slider input[type="range"]{
+  width:100%;
+  accent-color:var(--accent);
+}
+.vibe-stack-slider input:disabled{opacity:.42}
+.vibe-stack-slider strong{
+  color:var(--muted);
+  text-align:right;
+  font-size:10px;
+  font-variant-numeric:tabular-nums;
+}
+:root[data-theme="dark"] .vibe-stack-summary,
+:root[data-theme="dark"] .vibe-stack-item{
+  background:rgba(25,37,48,.56);
+}
+@media(max-width:560px){
+  .vibe-stack-item-head{align-items:flex-start}
+  .vibe-stack-item-actions{gap:6px}
+  .vibe-stack-slider{grid-template-columns:68px minmax(0,1fr) 34px}
+}
