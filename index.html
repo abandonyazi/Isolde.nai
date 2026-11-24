@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=60" />
+  <link rel="stylesheet" href="./app.css?v=61" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -241,7 +241,10 @@
 <p>生成结果会出现在这里</p>
         </div>
         <div id="resultWrap" class="result-wrap hidden">
-          <img id="resultImage" alt="最新生成图片" />
+          <div class="result-image-stage">
+            <img id="resultImage" alt="最新生成图片" />
+            <button id="deleteResultBtn" class="result-delete-btn" type="button" aria-label="删除当前图片" title="删除当前图片">删除</button>
+          </div>
           <div class="result-actions">
             <button id="saveLink" class="secondary-btn" type="button">保存图片</button>
             <button id="saveWatermarkedBtn" class="secondary-btn" type="button">保存水印版</button>
@@ -742,6 +745,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=97"></script>
+  <script type="module" src="./app.js?v=98"></script>
 </body>
 </html>
