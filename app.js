@@ -37,7 +37,7 @@ const els = {
   outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
   workbenchOutfitPicker: $('workbenchOutfitPicker'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), galleryPresetFilter: $('galleryPresetFilter'), galleryPagination: $('galleryPagination'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
-  galleryViewer: $('galleryViewer'), galleryViewerImage: $('galleryViewerImage'), galleryViewerClose: $('galleryViewerClose'), galleryViewerPrev: $('galleryViewerPrev'), galleryViewerNext: $('galleryViewerNext'), galleryViewerCounter: $('galleryViewerCounter'), galleryViewerMeta: $('galleryViewerMeta'),
+  galleryViewer: $('galleryViewer'), galleryViewerImage: $('galleryViewerImage'), galleryViewerDelete: $('galleryViewerDelete'), galleryViewerClose: $('galleryViewerClose'), galleryViewerPrev: $('galleryViewerPrev'), galleryViewerNext: $('galleryViewerNext'), galleryViewerCounter: $('galleryViewerCounter'), galleryViewerMeta: $('galleryViewerMeta'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
   apiPresetSelect: $('apiPresetSelect'), renameApiPresetBtn: $('renameApiPresetBtn'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
   renameApiPresetDialog: $('renameApiPresetDialog'), renameApiPresetForm: $('renameApiPresetForm'), renameApiPresetInput: $('renameApiPresetInput'), saveApiPresetNameBtn: $('saveApiPresetNameBtn'),
@@ -116,7 +116,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=101',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=102',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -3094,6 +3094,36 @@ function galleryViewerMove(delta){
   const next=(galleryViewerIndex+delta+galleryViewerItems.length)%galleryViewerItems.length;
   showGalleryViewerItem(next);
 }
+function updateGalleryViewerDeletePosition(){
+  if(!els.galleryViewerDelete||!els.galleryViewerImage||!els.galleryViewer?.classList.contains('open'))return;
+  const rect=els.galleryViewerImage.getBoundingClientRect();
+  if(!rect.width||!rect.height)return;
+  const top=Math.max(8,rect.top+10);
+  const left=Math.max(8,rect.right-els.galleryViewerDelete.offsetWidth-10);
+  els.galleryViewerDelete.style.top=`${top}px`;
+  els.galleryViewerDelete.style.left=`${left}px`;
+}
+async function deleteCurrentGalleryViewerItem(){
+  if(galleryViewerIndex<0||galleryViewerIndex>=galleryViewerItems.length)return;
+  const item=galleryViewerItems[galleryViewerIndex];
+  const id=item?.id;
+  if(id===null||id===undefined)return;
+  await deleteGalleryRecord(id);
+  selectedGalleryIds.delete(id);
+  if(currentResultGalleryId===id) clearCurrentResult();
+
+  galleryViewerItems.splice(galleryViewerIndex,1);
+  await renderGallery();
+
+  if(!galleryViewerItems.length){
+    closeGalleryViewer();
+    showToast('图片已删除');
+    return;
+  }
+  galleryViewerIndex=Math.min(galleryViewerIndex,galleryViewerItems.length-1);
+  showGalleryViewerItem(galleryViewerIndex);
+  showToast('图片已删除');
+}
 
 function showGalleryViewerItem(index){
   if(!els.galleryViewer||!galleryViewerItems.length) return;
@@ -3105,6 +3135,7 @@ function showGalleryViewerItem(index){
   galleryViewerObjectUrl=URL.createObjectURL(item.blob);
   els.galleryViewerImage.src=galleryViewerObjectUrl;
   els.galleryViewerImage.alt=`图库图片 ${galleryViewerIndex+1}/${count}`;
+  els.galleryViewerImage.onload=()=>requestAnimationFrame(updateGalleryViewerDeletePosition);
   els.galleryViewerCounter.textContent=`${galleryViewerIndex+1} / ${count}`;
   els.galleryViewerMeta.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;
   const multiple=count>1;
@@ -3125,8 +3156,18 @@ function openGalleryViewer(items,index){
 function initGalleryViewer(){
   if(!els.galleryViewer) return;
   els.galleryViewerClose?.addEventListener('click',closeGalleryViewer);
+  els.galleryViewerDelete?.addEventListener('click',()=>{
+    if(galleryViewerIndex<0||galleryViewerIndex>=galleryViewerItems.length)return;
+    requestDeleteConfirmation({
+      title:'删除这张图片？',
+      message:'这张图片会从当前设备的图库中删除。',
+      confirmText:'确认删除',
+      action:deleteCurrentGalleryViewerItem
+    });
+  });
   els.galleryViewerPrev?.addEventListener('click',()=>galleryViewerMove(-1));
   els.galleryViewerNext?.addEventListener('click',()=>galleryViewerMove(1));
+  window.addEventListener('resize',()=>requestAnimationFrame(updateGalleryViewerDeletePosition));
   els.galleryViewer.addEventListener('click',(event)=>{
     if(event.target===els.galleryViewer) closeGalleryViewer();
   });
