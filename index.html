@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=55" />
+  <link rel="stylesheet" href="./app.css?v=56" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -296,7 +296,17 @@
           <button id="clearGalleryBtn" class="text-btn danger" type="button">清空图库</button>
         </div>
       </div>
+      <div class="gallery-toolbar">
+        <label class="gallery-filter-field">
+          <span>按预设查看</span>
+          <select id="galleryPresetFilter">
+            <option value="">全部预设</option>
+          </select>
+        </label>
+        <span class="gallery-page-size">每页 30 张</span>
+      </div>
       <div id="galleryGrid" class="gallery-grid"></div>
+      <nav id="galleryPagination" class="gallery-pagination hidden" aria-label="图库分页"></nav>
     </section>
 
     <section id="view-settings" class="view">
@@ -728,6 +738,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=91"></script>
+  <script type="module" src="./app.js?v=92"></script>
 </body>
 </html>
