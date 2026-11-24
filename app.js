@@ -30,7 +30,7 @@ const els = {
   quickWordCategoryList: $('quickWordCategoryList'),
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
-  emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
+  emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
   presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
@@ -72,6 +72,7 @@ let galleryViewerPointerStartY = null;
 let pendingDeleteAction = null;
 let currentObjectUrl = null;
 let currentResultBlob = null;
+let currentResultGalleryId = null;
 let currentSeed = '';
 let busy = false;
 let toastTimer = null;
@@ -115,7 +116,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=100',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=101',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1825,6 +1826,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
       vibeEnabled:els.vibeEnabled.checked,vibeStrength:Number(els.vibeStrength.value),vibeInformation:Number(els.vibeInformation.value),vibeName:currentVibeAsset?.name||'',
       createdAt:Date.now()
     });
+    currentResultGalleryId=galleryId;
     saveSettings(); setConnectionState('ready','生成完成'); showToast('已生成并保存到图库');
     return {
       blob,seed,prompt:naiBody.input,negative:naiBody.parameters.negative_prompt,
@@ -1839,13 +1841,32 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
     busy=false; els.generateBtn.disabled=false; els.generateLabel.textContent='生成'; els.generateSpinner.classList.add('hidden');
   }
 }
-function showResult(blob,seed){
+function showResult(blob,seed,galleryId=null){
   if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
   currentResultBlob=blob;
+  currentResultGalleryId=galleryId;
   currentObjectUrl=URL.createObjectURL(blob);
   els.resultImage.src=currentObjectUrl;
   els.saveLink.dataset.filename=seed ? `nai-${seed}.png` : `nai-${Date.now()}.png`;
   els.emptyResult.classList.add('hidden'); els.resultWrap.classList.remove('hidden');
+}
+function clearCurrentResult(){
+  if(currentObjectUrl) URL.revokeObjectURL(currentObjectUrl);
+  currentObjectUrl=null;
+  currentResultBlob=null;
+  currentResultGalleryId=null;
+  els.resultImage.removeAttribute('src');
+  els.resultWrap.classList.add('hidden');
+  els.emptyResult.classList.remove('hidden');
+}
+async function deleteCurrentWorkbenchResult(){
+  const galleryId=currentResultGalleryId;
+  if(galleryId!==null&&galleryId!==undefined&&galleryId!==''){
+    await deleteGalleryRecord(galleryId);
+    selectedGalleryIds.delete(galleryId);
+  }
+  clearCurrentResult();
+  showToast(galleryId!==null&&galleryId!==undefined&&galleryId!==''?'图片已删除':'工作台图片已移除');
 }
 function isIOSLike(){
   return /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
@@ -3051,7 +3072,7 @@ function applyGalleryMeta(item){
   if(item.referenceEnabled&&!currentReferenceAsset?.blob)showToast('这张图当时用了 Reference，但当前设备没有对应参考图');
   if(item.vibeEnabled&&!vibeAssetUsable(currentVibeAsset))showToast('这张图当时用了 Vibe，但当前设备没有对应 Vibe 图');
   els.seed.value=item.seed||'';currentSeed=item.seed||'';els.aspect.value=aspectFor(Number(els.width.value),Number(els.height.value));
-renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.seed||'gallery');goView('workbench');
+renderAnchorPicker();updateAssembly();saveSettings();showResult(item.blob,item.seed||'gallery',item.id);goView('workbench');
 }
 
 function closeGalleryViewer(){
@@ -3774,6 +3795,16 @@ document.addEventListener('click',(event)=>{
 });
 document.addEventListener('keydown',(event)=>{if(event.key==='Escape'){els.insertAnchorMenu?.classList.add('hidden');els.quickWordsMenu?.classList.add('hidden');}});
 els.generateBtn.addEventListener('click',()=>generate());
+els.deleteResultBtn?.addEventListener('click',()=>{
+  if(!currentResultBlob)return;
+  const linked=currentResultGalleryId!==null&&currentResultGalleryId!==undefined&&currentResultGalleryId!=='';
+  requestDeleteConfirmation({
+    title:'删除这张图片？',
+    message:linked?'这张图片会同时从工作台和图库中删除。':'这张图片会从工作台移除。',
+    confirmText:'确认删除',
+    action:deleteCurrentWorkbenchResult
+  });
+});
 els.saveLink?.addEventListener('click',async()=>{
   if(!currentResultBlob){showToast('还没有可保存的图片');return;}
   const name=els.saveLink.dataset.filename || (currentSeed ? `nai-${currentSeed}.png` : `nai-${Date.now()}.png`);
