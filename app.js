@@ -2645,10 +2645,17 @@ async function importVibeDocumentFile(file){
     keys.push(key);
   }
   await renderVibePresets(keys[0]);
-  await applyVibePreset(keys[0]);
-  if(entries.length>1)showToast(`已导入 ${entries.length} 个 Vibe 预设`);
-  else if(entries[0]?.isGroup)showToast(`组合 Vibe「${entries[0].name}」已导入 · ${entries[0].vibeItems?.length||0} 个子 Vibe`);
-  else showToast('Vibe 文件已导入');
+  if(entries.length===1){
+    await appendVibeItems(cloneVibeItems(entries[0]),{name:entries[0].name||'Vibe',toast:false});
+    els.vibePresetSelect.value=keys[0];
+    els.loadVibePresetBtn.disabled=false;
+    els.appendVibePresetBtn.disabled=false;
+    els.deleteVibePresetBtn.disabled=false;
+    const count=cloneVibeItems(entries[0]).length;
+    showToast(count>1?`已添加组合 Vibe · ${count} 个子 Vibe`:'Vibe 已添加到当前组合');
+  }else{
+    showToast(`已导入 ${entries.length} 个 Vibe 预设 · 选择后可载入或追加`);
+  }
 }
 async function saveCurrentVibePreset(){
   const items=vibeItemsFromAsset();
