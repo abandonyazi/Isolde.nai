@@ -1,4 +1,4 @@
-const VERSION = '0.9.65';
+const VERSION = '0.9.66';
 const MAIN_MODULE = './st-extension.js?ver=' + VERSION;
 const WORKBENCH_URL = new URL('./index.html?embed=1&ver=' + VERSION, import.meta.url).href;
 const WAND_ENTRY_ID = 'isolde-nai-wand-entry';
