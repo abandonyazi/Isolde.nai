@@ -36,7 +36,7 @@ const els = {
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
   outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
   workbenchOutfitPicker: $('workbenchOutfitPicker'),
-  galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
+  galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), galleryPresetFilter: $('galleryPresetFilter'), galleryPagination: $('galleryPagination'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
   galleryViewer: $('galleryViewer'), galleryViewerImage: $('galleryViewerImage'), galleryViewerClose: $('galleryViewerClose'), galleryViewerPrev: $('galleryViewerPrev'), galleryViewerNext: $('galleryViewerNext'), galleryViewerCounter: $('galleryViewerCounter'), galleryViewerMeta: $('galleryViewerMeta'),
   galleryExportProgressWrap: $('galleryExportProgressWrap'), galleryExportProgressBar: $('galleryExportProgressBar'), galleryExportProgressText: $('galleryExportProgressText'), galleryExportProgressPercent: $('galleryExportProgressPercent'), downloadGalleryZipBtn: $('downloadGalleryZipBtn'),
   apiPresetSelect: $('apiPresetSelect'), renameApiPresetBtn: $('renameApiPresetBtn'), deleteApiPresetBtn: $('deleteApiPresetBtn'),
@@ -58,8 +58,11 @@ let quickWordCategories = [];
 let quickWordsActiveCategory = '';
 let selectedAnchorIds = [];
 let selectedOutfitIds = {};
+const GALLERY_PAGE_SIZE = 30;
 let galleryBatchMode = false;
 let selectedGalleryIds = new Set();
+let galleryPage = 1;
+let galleryPresetFilter = '';
 let galleryViewerItems = [];
 let galleryViewerIndex = -1;
 let galleryViewerObjectUrl = null;
@@ -111,7 +114,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=94',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=95',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -2790,14 +2793,12 @@ function setGalleryBatchMode(enabled){
   });
   updateBatchDeleteButton();
 }
-async function deleteGalleryItem(id,card){
+async function deleteGalleryItem(id){
   const scrollTop=window.scrollY;
   const scrollLeft=window.scrollX;
   await deleteGalleryRecord(id);
   selectedGalleryIds.delete(id);
-  if(card?.isConnected) card.remove();
-  syncGalleryGridState();
-  updateBatchDeleteButton();
+  await renderGallery();
   restoreGalleryScroll(scrollLeft,scrollTop);
 }
 function updateBatchDeleteButton(){
@@ -2818,7 +2819,6 @@ async function deleteSelectedGalleryItems(){
   if(!ids.length)return;
   const scrollTop=window.scrollY;
   const scrollLeft=window.scrollX;
-  const idSet=new Set(ids.map(id=>String(id)));
   const db=await openDb();
   await new Promise((resolve,reject)=>{
     const tx=db.transaction('history','readwrite');
@@ -2829,11 +2829,8 @@ async function deleteSelectedGalleryItems(){
     tx.onabort=()=>reject(tx.error||new Error('批量删除失败'));
   });
   db.close();
-  els.galleryGrid.querySelectorAll('.gallery-card').forEach(card=>{
-    if(idSet.has(card.dataset.galleryId||'')) card.remove();
-  });
   setGalleryBatchMode(false);
-  syncGalleryGridState();
+  await renderGallery();
   restoreGalleryScroll(scrollLeft,scrollTop);
   showToast(`已删除 ${ids.length} 张图片`);
 }
@@ -2941,36 +2938,182 @@ function initGalleryViewer(){
   });
 }
 
+function galleryItemPresetKey(item){
+  if(item?.presetId) return `id:${item.presetId}`;
+  if(item?.presetName) return `name:${item.presetName}`;
+  return 'none';
+}
+function galleryItemPresetLabel(item){
+  if(item?.presetId){
+    const current=presets.find(p=>p.id===item.presetId);
+    if(current?.name) return current.name;
+  }
+  return item?.presetName || '无预设';
+}
+function renderGalleryPresetFilter(items){
+  if(!els.galleryPresetFilter) return;
+  const groups=new Map();
+  for(const item of items){
+    const key=galleryItemPresetKey(item);
+    const group=groups.get(key)||{key,label:galleryItemPresetLabel(item),count:0};
+    group.count++;
+    groups.set(key,group);
+  }
+  const current=galleryPresetFilter;
+  els.galleryPresetFilter.replaceChildren();
+  const all=document.createElement('option');
+  all.value='';
+  all.textContent=`全部预设 · ${items.length} 张`;
+  els.galleryPresetFilter.appendChild(all);
+  [...groups.values()]
+    .sort((a,b)=>a.label.localeCompare(b.label,'zh-CN'))
+    .forEach(group=>{
+      const option=document.createElement('option');
+      option.value=group.key;
+      option.textContent=`${group.label} · ${group.count} 张`;
+      els.galleryPresetFilter.appendChild(option);
+    });
+  galleryPresetFilter=groups.has(current)?current:'';
+  els.galleryPresetFilter.value=galleryPresetFilter;
+}
+function galleryPageTokens(current,total){
+  if(total<=7) return Array.from({length:total},(_,i)=>i+1);
+  const values=new Set([1,total,current,current-1,current+1]);
+  const pages=[...values].filter(page=>page>=1&&page<=total).sort((a,b)=>a-b);
+  const tokens=[];
+  for(let i=0;i<pages.length;i++){
+    if(i&&pages[i]-pages[i-1]>1) tokens.push('…');
+    tokens.push(pages[i]);
+  }
+  return tokens;
+}
+function renderGalleryPagination(totalItems){
+  if(!els.galleryPagination) return;
+  const totalPages=Math.max(1,Math.ceil(totalItems/GALLERY_PAGE_SIZE));
+  galleryPage=Math.min(Math.max(1,galleryPage),totalPages);
+  els.galleryPagination.replaceChildren();
+  if(totalPages<=1){
+    els.galleryPagination.classList.add('hidden');
+    return;
+  }
+  els.galleryPagination.classList.remove('hidden');
+  const makeNav=(label,page,disabled=false)=>{
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='gallery-page-btn';
+    button.textContent=label;
+    button.disabled=disabled;
+    if(!disabled) button.addEventListener('click',()=>goGalleryPage(page));
+    return button;
+  };
+  els.galleryPagination.appendChild(makeNav('‹',galleryPage-1,galleryPage<=1));
+  const numbers=document.createElement('div');
+  numbers.className='gallery-page-numbers';
+  for(const token of galleryPageTokens(galleryPage,totalPages)){
+    if(token==='…'){
+      const dots=document.createElement('span');
+      dots.className='gallery-page-dots';
+      dots.textContent='…';
+      numbers.appendChild(dots);
+      continue;
+    }
+    const button=makeNav(String(token),token,false);
+    button.classList.toggle('active',token===galleryPage);
+    button.setAttribute('aria-current',token===galleryPage?'page':'false');
+    numbers.appendChild(button);
+  }
+  els.galleryPagination.appendChild(numbers);
+  els.galleryPagination.appendChild(makeNav('›',galleryPage+1,galleryPage>=totalPages));
+}
+async function goGalleryPage(page){
+  const next=Math.max(1,Number(page)||1);
+  if(next===galleryPage) return;
+  galleryPage=next;
+  await renderGallery();
+  const top=document.querySelector('.gallery-toolbar')?.getBoundingClientRect().top??0;
+  if(top<0) window.scrollTo({top:window.scrollY+top-12,behavior:'smooth'});
+}
 async function renderGallery(){
-  els.galleryGrid.innerHTML='';
   try{
     const items=await getGallery();
     const validIds=new Set(items.map(item=>item.id));
     selectedGalleryIds=new Set([...selectedGalleryIds].filter(id=>validIds.has(id)));
-    els.galleryCount.textContent=`${items.length} 张 · 保存在此设备`;
+    renderGalleryPresetFilter(items);
+
+    const filteredItems=galleryPresetFilter
+      ? items.filter(item=>galleryItemPresetKey(item)===galleryPresetFilter)
+      : items;
+    const totalPages=Math.max(1,Math.ceil(filteredItems.length/GALLERY_PAGE_SIZE));
+    galleryPage=Math.min(Math.max(1,galleryPage),totalPages);
+    const start=(galleryPage-1)*GALLERY_PAGE_SIZE;
+    const pageItems=filteredItems.slice(start,start+GALLERY_PAGE_SIZE);
+
+    if(galleryPresetFilter) els.galleryCount.textContent=`${filteredItems.length} / ${items.length} 张 · 保存在此设备`;
+    else els.galleryCount.textContent=`${items.length} 张 · 保存在此设备`;
     updateBatchDeleteButton();
+    renderGalleryPagination(filteredItems.length);
+
+    const fragment=document.createDocumentFragment();
     if(!items.length){
       galleryBatchMode=false;selectedGalleryIds.clear();updateBatchDeleteButton();
-      const note=document.createElement('div');note.className='empty-note';note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';els.galleryGrid.appendChild(note);return;
+      const note=document.createElement('div');
+      note.className='empty-note gallery-empty-note';
+      note.textContent='图库还是空的。生成第一张图后会自动保存在这里。';
+      fragment.appendChild(note);
+      els.galleryGrid.replaceChildren(fragment);
+      return;
     }
-    for(const item of items){
-      const card=document.createElement('article');card.className='gallery-card';card.dataset.galleryId=String(item.id);
-      if(galleryBatchMode)card.classList.add('gallery-batch-mode');
-      const selected=selectedGalleryIds.has(item.id);
-      if(selected)card.classList.add('gallery-selected');
+    if(!filteredItems.length){
+      galleryBatchMode=false;selectedGalleryIds.clear();updateBatchDeleteButton();
+      const note=document.createElement('div');
+      note.className='empty-note gallery-empty-note';
+      note.textContent='这个预设还没有生成记录。';
+      fragment.appendChild(note);
+      els.galleryGrid.replaceChildren(fragment);
+      return;
+    }
 
-      const ib=document.createElement('button');ib.type='button';ib.className='gallery-image-btn';
-      const img=document.createElement('img');const url=URL.createObjectURL(item.blob);img.src=url;img.onload=()=>URL.revokeObjectURL(url);img.alt='图库图片';ib.appendChild(img);
-      ib.addEventListener('click',()=>{ if(galleryBatchMode)setGallerySelected(card,item.id,!selectedGalleryIds.has(item.id)); else openGalleryViewer(items,items.findIndex(entry=>entry.id===item.id)); });
+    for(const item of pageItems){
+      const card=document.createElement('article');
+      card.className='gallery-card';
+      card.dataset.galleryId=String(item.id);
+      if(galleryBatchMode) card.classList.add('gallery-batch-mode');
+      const selected=selectedGalleryIds.has(item.id);
+      if(selected) card.classList.add('gallery-selected');
+
+      const ib=document.createElement('button');
+      ib.type='button';
+      ib.className='gallery-image-btn';
+      const img=document.createElement('img');
+      const url=URL.createObjectURL(item.blob);
+      img.src=url;
+      img.onload=()=>URL.revokeObjectURL(url);
+      img.onerror=()=>URL.revokeObjectURL(url);
+      img.alt='图库图片';
+      ib.appendChild(img);
+      ib.addEventListener('click',()=>{
+        if(galleryBatchMode) setGallerySelected(card,item.id,!selectedGalleryIds.has(item.id));
+        else openGalleryViewer(filteredItems,filteredItems.findIndex(entry=>entry.id===item.id));
+      });
       card.appendChild(ib);
 
-      const cancel=document.createElement('button');cancel.type='button';cancel.className='gallery-selection-cancel'+(selected?'':' hidden');cancel.textContent='取消';
+      const cancel=document.createElement('button');
+      cancel.type='button';
+      cancel.className='gallery-selection-cancel'+(selected?'':' hidden');
+      cancel.textContent='取消';
       cancel.addEventListener('click',(event)=>{event.stopPropagation();setGallerySelected(card,item.id,false);});
       card.appendChild(cancel);
 
-      const meta=document.createElement('div');meta.className='gallery-meta';const strong=document.createElement('strong');strong.textContent=item.presetName||item.model||'NAI';meta.appendChild(strong);
-      const span=document.createElement('span');span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;meta.appendChild(span);
-      const actions=document.createElement('div');actions.className='gallery-actions';
+      const meta=document.createElement('div');
+      meta.className='gallery-meta';
+      const strong=document.createElement('strong');
+      strong.textContent=galleryItemPresetLabel(item)||item.model||'NAI';
+      meta.appendChild(strong);
+      const span=document.createElement('span');
+      span.textContent=`${item.width||'?'}×${item.height||'?'} · seed ${item.seed||'?'}`;
+      meta.appendChild(span);
+      const actions=document.createElement('div');
+      actions.className='gallery-actions';
       actions.appendChild(makeButton('保存图片','',()=>saveImageBlob(item.blob,item.seed?`nai-${item.seed}.png`:`nai-${item.id}.png`)));
       actions.appendChild(makeButton('水印版','',()=>saveWatermarkedBlob(item.blob,item.seed?`nai-${item.seed}-watermarked.png`:`nai-${item.id}-watermarked.png`).catch(e=>showToast(e?.message||'水印版生成失败'))));
       actions.appendChild(makeButton('载入','',()=>applyGalleryMeta(item)));
@@ -2978,11 +3121,17 @@ async function renderGallery(){
         title:'删除这张图片？',
         message:'这张图片会从当前设备的图库中删除。',
         confirmText:'确认删除',
-        action:async()=>{await deleteGalleryItem(item.id,card);showToast('图片已删除');}
+        action:async()=>{await deleteGalleryItem(item.id);showToast('图片已删除');}
       })));
-      meta.appendChild(actions);card.appendChild(meta);els.galleryGrid.appendChild(card);
+      meta.appendChild(actions);
+      card.appendChild(meta);
+      fragment.appendChild(card);
     }
-  }catch(e){console.warn(e);showToast('图库读取失败');}
+    els.galleryGrid.replaceChildren(fragment);
+  }catch(e){
+    console.warn(e);
+    showToast('图库读取失败');
+  }
 }
 const ZIP_CRC_TABLE=(()=>{
   const table=new Uint32Array(256);
@@ -3518,6 +3667,12 @@ els.testBtn.addEventListener('click',testConnection);
 els.saveSettingsBtn.addEventListener('click',()=>{
   try{rehydrateConnectionFields();normalizedEndpoint(els.apiFormat.value,els.endpoint.value);const key=els.apiKey.value.trim()||loadSavedToken();if(!key)throw new Error('Token 还是空的');if(!els.apiKey.value.trim())els.apiKey.value=key;persistTokenIfRemembered();saveSettings();const preset=saveCurrentApiPreset();els.settingsStatus.className='settings-status ok';els.settingsStatus.textContent=`设置已保存 · ${apiPresetLabel(preset)}`;setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · Token 已保存':'接口设置已保存');showToast('接口设置与 API 预设已保存');}
   catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e.message;}
+});
+els.galleryPresetFilter?.addEventListener('change',async()=>{
+  galleryPresetFilter=els.galleryPresetFilter.value||'';
+  galleryPage=1;
+  setGalleryBatchMode(false);
+  await renderGallery();
 });
 els.batchDeleteGalleryBtn?.addEventListener('click',()=>{
   if(!galleryBatchMode){
