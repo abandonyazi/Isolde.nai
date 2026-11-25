@@ -5,6 +5,7 @@ const SETTINGS_KEY = 'isolde_nai_settings_v2';
 const TOKEN_KEY = 'isolde_nai_token_v1';
 const THEME_KEY = 'isolde_nai_theme_v1';
 const PRESETS_KEY = 'isolde_nai_presets_v1';
+const DEFAULT_PROMPTS_KEY = 'isolde_nai_default_prompts_v1';
 const ANCHORS_KEY = 'isolde_nai_anchors_v1';
 const API_PRESETS_KEY = 'isolde_nai_api_presets_v1';
 const QUICK_WORDS_KEY = 'isolde_nai_quick_words_v1';
@@ -31,7 +32,8 @@ const els = {
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  defaultPromptDialog: $('defaultPromptDialog'), defaultPromptPositive: $('defaultPromptPositive'), defaultPromptNegative: $('defaultPromptNegative'), saveDefaultPromptBtn: $('saveDefaultPromptBtn'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
   outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
@@ -51,6 +53,7 @@ const els = {
 
 let settings = {};
 let presets = [];
+let defaultPrompts = { positive:'', negative:'' };
 let anchors = [];
 let apiPresets = [];
 let quickWords = [];
@@ -442,6 +445,11 @@ function requestDeleteConfirmation({title='确认删除？', message='', confirm
 function loadState() {
   settings = loadJson(SETTINGS_KEY, {});
   presets = loadJson(PRESETS_KEY, []);
+  const savedDefaultPrompts = loadJson(DEFAULT_PROMPTS_KEY, {});
+  defaultPrompts = {
+    positive: String(savedDefaultPrompts?.positive || ''),
+    negative: String(savedDefaultPrompts?.negative || '')
+  };
   anchors = loadJson(ANCHORS_KEY, []);
   apiPresets = loadJson(API_PRESETS_KEY, []);
   quickWords = loadJson(QUICK_WORDS_KEY, []);
@@ -675,7 +683,9 @@ function orderedAnchorAppearance(items) {
 }
 function assemblePrompts(includeSelectedAnchors = true) {
   const preset = currentPreset();
-  const presetPrompt = cleanJoin([preset?.artist || '', preset?.positive || '']);
+  const presetPositive = String(preset?.positive || '').trim() || defaultPrompts.positive;
+  const presetNegative = String(preset?.negative || '').trim() || defaultPrompts.negative;
+  const presetPrompt = cleanJoin([preset?.artist || '', presetPositive]);
 
   // Keep the user's scene prompt intact and place the whole block last.
   // TEXT:, if present, is ordinary scene-prompt content authored by the user.
@@ -724,7 +734,7 @@ function assemblePrompts(includeSelectedAnchors = true) {
   ]);
   const positive = positiveVisual;
 
-  const negative = cleanJoin([preset?.negative || '', els.extraNegative.value]);
+  const negative = cleanJoin([presetNegative, els.extraNegative.value]);
 
   if (!supportsCharacterPrompts(els.model.value) || !chosenAnchors.length) {
     return { positive, basePositive: positive, negative, characters: [] };
@@ -1313,6 +1323,22 @@ function deletePreset(id) {
   presets=presets.filter(x=>x.id!==id); saveJson(PRESETS_KEY,presets);
   if (settings.presetId===id) settings.presetId=presets[0]?.id || '';
   renderPresetSelect(); renderPresetLibrary(); updateAssembly();
+}
+function openDefaultPromptEditor() {
+  els.defaultPromptPositive.value = defaultPrompts.positive || '';
+  els.defaultPromptNegative.value = defaultPrompts.negative || '';
+  els.defaultPromptDialog.showModal();
+}
+function saveDefaultPromptEditor() {
+  defaultPrompts = {
+    positive: els.defaultPromptPositive.value.trim(),
+    negative: els.defaultPromptNegative.value.trim(),
+    updatedAt: Date.now()
+  };
+  saveJson(DEFAULT_PROMPTS_KEY, defaultPrompts);
+  els.defaultPromptDialog.close();
+  updateAssembly();
+  showToast('默认正负面已保存');
 }
 function renderAnchors() {
   els.anchorList.innerHTML='';
@@ -2189,6 +2215,7 @@ async function exportPortableConfig(){
       exportedAt:new Date().toISOString(),
       settings:loadJson(SETTINGS_KEY,{}),
       presets:loadJson(PRESETS_KEY,[]),
+      defaultPrompts:loadJson(DEFAULT_PROMPTS_KEY,{}),
       anchors:loadJson(ANCHORS_KEY,[]),
       theme:localStorage.getItem(THEME_KEY)||'',
       assets
@@ -2208,6 +2235,7 @@ async function importPortableConfig(file){
     if(raw?.kind!=='isolde-nai-config')throw new Error('这不是 Isolde.nai 配置文件');
     if(raw.settings&&typeof raw.settings==='object')saveJson(SETTINGS_KEY,raw.settings);
     if(Array.isArray(raw.presets))saveJson(PRESETS_KEY,raw.presets);
+    if(raw.defaultPrompts&&typeof raw.defaultPrompts==='object')saveJson(DEFAULT_PROMPTS_KEY,raw.defaultPrompts);
     if(Array.isArray(raw.anchors))saveJson(ANCHORS_KEY,raw.anchors);
     if(typeof raw.theme==='string'&&raw.theme)localStorage.setItem(THEME_KEY,raw.theme);
     if(Array.isArray(raw.assets)){
@@ -3879,6 +3907,8 @@ els.naiInspectFile?.addEventListener('change',async()=>{
 });
 els.addInspectedPresetBtn?.addEventListener('click',addInspectedPreset);
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
+els.defaultPromptBtn?.addEventListener('click',openDefaultPromptEditor);
+els.saveDefaultPromptBtn?.addEventListener('click',saveDefaultPromptEditor);
 els.savePresetBtn.addEventListener('click',()=>{
   const name=els.presetName.value.trim();if(!name){els.presetName.focus();return;}
   try{
