@@ -1736,6 +1736,31 @@ function normalizeCharacterCaption(value) {
 function supportsCharacterPrompts(model) {
   return model.startsWith('nai-diffusion-5') || model.includes('nai-diffusion-4-5');
 }
+function sceneCharactersForGallery(value) {
+  if(!Array.isArray(value))return[];
+  return value.map((character)=>{
+    if(!character||typeof character!=='object')return null;
+    const prompt=String(character.prompt||character.appearance||'').trim();
+    if(!prompt)return null;
+    return {
+      name:String(character.name||'').trim(),
+      anchor:String(character.anchor||'').trim(),
+      prompt
+    };
+  }).filter(Boolean);
+}
+function mergeGalleryScenePrompt(scenePrompt,sceneCharacters){
+  const base=String(scenePrompt||'').trim();
+  const extras=sceneCharactersForGallery(sceneCharacters).map(item=>item.prompt).filter(Boolean);
+  if(!extras.length)return base;
+  const extraText=cleanJoin(extras);
+  const textMatch=/\bTEXT\s*:/i.exec(base);
+  if(!textMatch)return cleanJoin([base,extraText]);
+  const before=base.slice(0,textMatch.index).trim().replace(/[,\s]+$/g,'');
+  const textBlock=base.slice(textMatch.index).trim();
+  const visual=cleanJoin([before,extraText]);
+  return [visual,textBlock].filter(Boolean).join('\n');
+}
 function resolveAutomaticCharacters(value) {
   if(!Array.isArray(value))return[];
   return value.map((character)=>{
@@ -1845,6 +1870,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
     const galleryId=await addGallery(galleryBlob,{
       seed,scenePrompt:els.scenePrompt.value,extraNegative:els.extraNegative.value,
       assembledPrompt:naiBody.input,assembledNegative:naiBody.parameters.negative_prompt,
+      sceneCharacters:sceneCharactersForGallery(promptSource.characters),
       presetId:p?.id||'',presetName:p?.name||'',anchorIds:[...selectedAnchorIds],
       model:els.model.value,sampler:els.sampler.value,width:naiBody.parameters.width,height:naiBody.parameters.height,
       steps:Number(els.steps.value),cfg:Number(els.cfg.value),cfgRescale:Number(els.guidanceRescale.value),
@@ -3077,7 +3103,7 @@ async function deleteSelectedGalleryItems(){
   showToast(`已删除 ${ids.length} 张图片`);
 }
 function applyGalleryMeta(item){
-  els.scenePrompt.value=item.scenePrompt??item.prompt??'';
+  els.scenePrompt.value=mergeGalleryScenePrompt(item.scenePrompt??item.prompt??'',item.sceneCharacters);
   els.extraNegative.value=item.extraNegative??item.negative??'';
   if(item.presetId&&presets.some(p=>p.id===item.presetId)) els.presetSelect.value=item.presetId;
   selectedAnchorIds=(item.anchorIds||[]).filter(id=>anchors.some(a=>a.id===id));
