@@ -32,7 +32,7 @@ const els = {
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetWidth: $('presetWidth'), presetHeight: $('presetHeight'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
   defaultPromptDialog: $('defaultPromptDialog'), defaultPromptPositive: $('defaultPromptPositive'), defaultPromptNegative: $('defaultPromptNegative'), saveDefaultPromptBtn: $('saveDefaultPromptBtn'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
@@ -1294,6 +1294,89 @@ function importChatu8Presets() {
   if(activeId)parts.push('已切到智绘姬当前预设');
   showToast('智绘姬导入完成：'+parts.join('，'));
 }
+function currentGenerationSettings() {
+  return {
+    model: els.model.value,
+    sampler: els.sampler.value,
+    width: Number(els.width.value),
+    height: Number(els.height.value),
+    steps: Number(els.steps.value),
+    cfg: Number(els.cfg.value),
+    cfgRescale: Number(els.guidanceRescale.value)
+  };
+}
+function normalizedPresetGeneration(value,fallback=currentGenerationSettings()) {
+  const source=value&&typeof value==='object'?value:{};
+  return {
+    model:String(source.model||fallback.model||''),
+    sampler:String(source.sampler||fallback.sampler||''),
+    width:Math.round(clampNumber(source.width,256,2048,fallback.width||1024)/64)*64,
+    height:Math.round(clampNumber(source.height,256,2048,fallback.height||1024)/64)*64,
+    steps:Math.round(clampNumber(source.steps,1,50,fallback.steps||28)),
+    cfg:clampNumber(source.cfg,0,20,fallback.cfg||5),
+    cfgRescale:clampNumber(source.cfgRescale,0,1,fallback.cfgRescale??.32)
+  };
+}
+function selectHasValue(select,value){
+  return Boolean(select&&[...select.options].some(option=>option.value===value));
+}
+function applyPresetGenerationSettings(preset) {
+  if(!preset?.generation||typeof preset.generation!=='object')return false;
+  const generation=normalizedPresetGeneration(preset.generation);
+  if(selectHasValue(els.model,generation.model))els.model.value=generation.model;
+  if(selectHasValue(els.sampler,generation.sampler))els.sampler.value=generation.sampler;
+  els.width.value=String(generation.width);
+  els.height.value=String(generation.height);
+  els.steps.value=String(generation.steps);
+  els.cfg.value=String(generation.cfg);
+  els.guidanceRescale.value=String(generation.cfgRescale);
+  els.aspect.value=aspectFor(generation.width,generation.height);
+  updateGuidanceRescaleUi();
+  updateReferenceModelHint();
+  return true;
+}
+function selectPromptPreset(id,{goWorkbench=false}={}) {
+  const preset=presets.find(item=>item.id===id);
+  if(!preset)return;
+  els.presetSelect.value=preset.id;
+  settings.presetId=preset.id;
+  applyPresetGenerationSettings(preset);
+  updateAssembly();
+  if(goWorkbench)goView('workbench');
+}
+function presetGenerationFromEditor() {
+  return normalizedPresetGeneration({
+    model:els.presetModel.value,
+    sampler:els.presetSampler.value,
+    width:Number(els.presetWidth.value),
+    height:Number(els.presetHeight.value),
+    steps:Number(els.presetSteps.value),
+    cfg:Number(els.presetCfg.value),
+    cfgRescale:Number(els.presetGuidanceRescale.value)
+  });
+}
+function fillPresetGenerationEditor(preset=null) {
+  const generation=normalizedPresetGeneration(preset?.generation);
+  if(selectHasValue(els.presetModel,generation.model))els.presetModel.value=generation.model;
+  if(selectHasValue(els.presetSampler,generation.sampler))els.presetSampler.value=generation.sampler;
+  els.presetWidth.value=String(generation.width);
+  els.presetHeight.value=String(generation.height);
+  els.presetSteps.value=String(generation.steps);
+  els.presetCfg.value=String(generation.cfg);
+  els.presetGuidanceRescale.value=String(generation.cfgRescale);
+}
+function inspectPresetGeneration(params){
+  if(!params||typeof params!=='object')return currentGenerationSettings();
+  return normalizedPresetGeneration({
+    model:params.model,
+    sampler:params.sampler,
+    width:params.width,
+    height:params.height,
+    steps:params.steps,
+    cfg:params.cfg,
+    cfgRescale:params.cfgRescale
+  });
+}
 function renderPresetLibrary() {
   els.presetList.innerHTML = '';
   for (const p of presets) {
@@ -1303,7 +1386,7 @@ function renderPresetLibrary() {
     card.appendChild(title);
     const actions=document.createElement('div'); actions.className='card-actions preset-card-actions';
     actions.appendChild(makeButton('编辑','small-btn',()=>openPresetEditor(p)));
-    actions.appendChild(makeButton('设为当前','small-btn',()=>{ els.presetSelect.value=p.id; settings.presetId=p.id; updateAssembly(); goView('workbench'); }));
+    actions.appendChild(makeButton('设为当前','small-btn',()=>selectPromptPreset(p.id,{goWorkbench:true})));
     if (presets.length>1) actions.appendChild(makeButton('删除','small-btn danger',()=>deletePreset(p.id)));
     card.appendChild(actions); els.presetList.appendChild(card);
   }
@@ -1315,6 +1398,7 @@ function openPresetEditor(p=null) {
   els.presetArtist.value = p?.artist || '';
   els.presetPositive.value = p?.positive || '';
   els.presetNegative.value = p?.negative || '';
+  fillPresetGenerationEditor(p);
   els.presetDialog.showModal();
 }
 function deletePreset(id) {
@@ -1708,8 +1792,8 @@ async function handleNaiInspectFile(file){
 }
 function addInspectedPreset(){
   if(!currentNaiInspect)return;const name=els.naiInspectPresetName.value.trim();if(!name){els.naiInspectPresetName.focus();return;}const id=uid('preset');
-  const item={id,name,artist:els.naiInspectArtist.value.trim(),positive:els.naiInspectPositive.value.trim(),negative:els.naiInspectNegative.value.trim(),naiParams:{...currentNaiInspect.params},importedFrom:'nai-png',updatedAt:Date.now()};
-  presets.unshift(item);saveJson(PRESETS_KEY,presets);settings.presetId=id;renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();els.naiInspectDialog.close();showToast('预设「'+name+'」已加入');
+  const item={id,name,artist:els.naiInspectArtist.value.trim(),positive:els.naiInspectPositive.value.trim(),negative:els.naiInspectNegative.value.trim(),generation:inspectPresetGeneration(currentNaiInspect.params),naiParams:{...currentNaiInspect.params},importedFrom:'nai-png',updatedAt:Date.now()};
+  presets.unshift(item);saveJson(PRESETS_KEY,presets);settings.presetId=id;renderPresetSelect();selectPromptPreset(id);renderPresetLibrary();els.naiInspectDialog.close();showToast('预设「'+name+'」已加入');
 }
 function ucPresetNoneIndex(model) {
   if (model==='nai-diffusion-4-5-curated') return 3;
@@ -3838,7 +3922,7 @@ setInterval(()=>{
 },2000);
 
 els.tabs.forEach(b=>b.addEventListener('click',()=>goView(b.dataset.view)));
-els.presetSelect.addEventListener('change',()=>{settings.presetId=els.presetSelect.value;updateAssembly();});
+els.presetSelect.addEventListener('change',()=>selectPromptPreset(els.presetSelect.value));
 els.scenePrompt.addEventListener('input',updateAssembly);
 els.extraNegative.addEventListener('input',updateAssembly);
 els.qualityTags.addEventListener('input',updateAssembly);
@@ -3939,10 +4023,10 @@ els.savePresetBtn.addEventListener('click',()=>{
   const name=els.presetName.value.trim();if(!name){els.presetName.focus();return;}
   try{
     const id=els.presetId.value||uid('preset');
-    const item={id,name,artist:els.presetArtist.value.trim(),positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),updatedAt:Date.now()};
+    const item={id,name,artist:els.presetArtist.value.trim(),positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),generation:presetGenerationFromEditor(),updatedAt:Date.now()};
     const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
     saveJson(PRESETS_KEY,presets);settings.presetId=id;els.presetDialog.close();
-    renderPresetSelect();els.presetSelect.value=id;renderPresetLibrary();updateAssembly();showToast('预设已保存');
+    renderPresetSelect();selectPromptPreset(id);renderPresetLibrary();showToast('预设已保存');
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
