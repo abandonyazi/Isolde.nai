@@ -267,7 +267,7 @@
           <h2>画师串与正负面预设</h2>
           <p class="subtle">保存常用画师串、风格正面词和负面词。工作台只需要选名字。</p>
         </div>
-        <div class="page-head-actions"><button id="importChatu8Btn" class="secondary-btn" type="button">导入智绘姬</button><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button></div>
+        <div class="page-head-actions"><button id="importChatu8Btn" class="secondary-btn" type="button">导入智绘姬</button><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button><button id="defaultPromptBtn" class="secondary-btn" type="button">默认正负面</button></div>
       </div>
       <div id="presetList" class="library-list"></div>
     </section>
@@ -647,6 +647,28 @@
     </form>
   </dialog>
 
+  <dialog id="defaultPromptDialog" class="modal">
+    <form class="modal-panel" onsubmit="return false">
+      <div class="modal-head">
+        <h2>自定义默认项</h2>
+        <button class="icon-btn" type="button" data-close="defaultPromptDialog">×</button>
+      </div>
+      <p class="subtle">预设对应栏为空时自动使用这里的内容；预设里已经填写的正面词或负面词会优先使用。</p>
+      <label class="field">
+        <span>默认正面词</span>
+        <textarea id="defaultPromptPositive" rows="7" placeholder="预设没有正面词时自动补这里"></textarea>
+      </label>
+      <label class="field">
+        <span>默认负面词</span>
+        <textarea id="defaultPromptNegative" rows="6" placeholder="预设没有负面词时自动补这里"></textarea>
+      </label>
+      <div class="settings-actions">
+        <button class="secondary-btn" type="button" data-close="defaultPromptDialog">取消</button>
+        <button id="saveDefaultPromptBtn" class="primary-btn" type="button">保存默认项</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="naiInspectDialog" class="modal inspect-modal">
     <div class="modal-panel inspect-panel">
       <div class="modal-head">
@@ -746,6 +768,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=99"></script>
+  <script type="module" src="./app.js?v=100"></script>
 </body>
 </html>
