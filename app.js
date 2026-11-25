@@ -32,7 +32,7 @@ const els = {
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetWidth: $('presetWidth'), presetHeight: $('presetHeight'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
   defaultPromptDialog: $('defaultPromptDialog'), defaultPromptPositive: $('defaultPromptPositive'), defaultPromptNegative: $('defaultPromptNegative'), saveDefaultPromptBtn: $('saveDefaultPromptBtn'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
@@ -119,7 +119,7 @@ async function initZipWorker(){
     const btn=els.exportGalleryZipBtn;
     if(btn) btn.disabled=true;
     try{
-      const reg=await navigator.serviceWorker.register('./sw.js?v=103',{updateViaCache:'none'});
+      const reg=await navigator.serviceWorker.register('./sw.js?v=104',{updateViaCache:'none'});
       await reg.update().catch(()=>{});
       for(let i=0;i<24;i++){
         if(await pingZipWorker()){
@@ -1298,8 +1298,6 @@ function currentGenerationSettings() {
   return {
     model: els.model.value,
     sampler: els.sampler.value,
-    width: Number(els.width.value),
-    height: Number(els.height.value),
     steps: Number(els.steps.value),
     cfg: Number(els.cfg.value),
     cfgRescale: Number(els.guidanceRescale.value)
@@ -1310,8 +1308,6 @@ function normalizedPresetGeneration(value,fallback=currentGenerationSettings()) 
   return {
     model:String(source.model||fallback.model||''),
     sampler:String(source.sampler||fallback.sampler||''),
-    width:Math.round(clampNumber(source.width,256,2048,fallback.width||1024)/64)*64,
-    height:Math.round(clampNumber(source.height,256,2048,fallback.height||1024)/64)*64,
     steps:Math.round(clampNumber(source.steps,1,50,fallback.steps||28)),
     cfg:clampNumber(source.cfg,0,20,fallback.cfg||5),
     cfgRescale:clampNumber(source.cfgRescale,0,1,fallback.cfgRescale??.32)
@@ -1325,12 +1321,9 @@ function applyPresetGenerationSettings(preset) {
   const generation=normalizedPresetGeneration(preset.generation);
   if(selectHasValue(els.model,generation.model))els.model.value=generation.model;
   if(selectHasValue(els.sampler,generation.sampler))els.sampler.value=generation.sampler;
-  els.width.value=String(generation.width);
-  els.height.value=String(generation.height);
   els.steps.value=String(generation.steps);
   els.cfg.value=String(generation.cfg);
   els.guidanceRescale.value=String(generation.cfgRescale);
-  els.aspect.value=aspectFor(generation.width,generation.height);
   updateGuidanceRescaleUi();
   updateReferenceModelHint();
   return true;
@@ -1348,8 +1341,6 @@ function presetGenerationFromEditor() {
   return normalizedPresetGeneration({
     model:els.presetModel.value,
     sampler:els.presetSampler.value,
-    width:Number(els.presetWidth.value),
-    height:Number(els.presetHeight.value),
     steps:Number(els.presetSteps.value),
     cfg:Number(els.presetCfg.value),
     cfgRescale:Number(els.presetGuidanceRescale.value)
@@ -1359,8 +1350,6 @@ function fillPresetGenerationEditor(preset=null) {
   const generation=normalizedPresetGeneration(preset?.generation);
   if(selectHasValue(els.presetModel,generation.model))els.presetModel.value=generation.model;
   if(selectHasValue(els.presetSampler,generation.sampler))els.presetSampler.value=generation.sampler;
-  els.presetWidth.value=String(generation.width);
-  els.presetHeight.value=String(generation.height);
   els.presetSteps.value=String(generation.steps);
   els.presetCfg.value=String(generation.cfg);
   els.presetGuidanceRescale.value=String(generation.cfgRescale);
@@ -1370,8 +1359,6 @@ function inspectPresetGeneration(params){
   return normalizedPresetGeneration({
     model:params.model,
     sampler:params.sampler,
-    width:params.width,
-    height:params.height,
     steps:params.steps,
     cfg:params.cfg,
     cfgRescale:params.cfgRescale
