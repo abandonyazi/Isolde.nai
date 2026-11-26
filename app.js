@@ -858,7 +858,7 @@ function renderAnchorPicker() {
   }
 }
 function selectedAnchorList() {
-  return selectedAnchorIds.map(id=>anchors.find(anchor=>anchor.id===id)).filter(Boolean);
+  return anchors.filter(anchor=>selectedAnchorIds.includes(anchor.id));
 }
 function rememberSceneInsertSelection() {
   const textarea=els.scenePrompt;
