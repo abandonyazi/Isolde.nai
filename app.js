@@ -48,7 +48,6 @@ const els = {
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
   vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibeStackSummary: $('vibeStackSummary'), vibeItemsEditor: $('vibeItemsEditor'), vibePresetSelect: $('vibePresetSelect'), loadVibePresetBtn: $('loadVibePresetBtn'), appendVibePresetBtn: $('appendVibePresetBtn'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
-  sortDialog: $('sortDialog'), sortList: $('sortList'), sortPresetTab: $('sortPresetTab'), sortAnchorTab: $('sortAnchorTab'), closeSortBtn: $('closeSortBtn'),
   toast: $('toast')
 };
 
@@ -92,8 +91,9 @@ let currentNaiInspect = null;
 let zipWorkerReady = false;
 let zipWorkerInitPromise = null;
 let preparedGalleryZip = null;
-let sortMode = 'presets';
+let sortMode = '';
 let sortDragState = null;
+let activeSortHost = null;
 
 
 
@@ -1163,21 +1163,27 @@ function makeButton(text, cls, fn) {
 function sortItems(mode=sortMode) {
   return mode === 'anchors' ? anchors : presets;
 }
-function updateSortTabs() {
-  els.sortPresetTab?.classList.toggle('active', sortMode === 'presets');
-  els.sortAnchorTab?.classList.toggle('active', sortMode === 'anchors');
-  els.sortPresetTab?.setAttribute('aria-selected', String(sortMode === 'presets'));
-  els.sortAnchorTab?.setAttribute('aria-selected', String(sortMode === 'anchors'));
-}
 function setSortMode(mode) {
   sortMode = mode === 'anchors' ? 'anchors' : 'presets';
-  updateSortTabs();
-  renderSortList();
+  const targetView = sortMode === 'anchors' ? 'anchors' : 'presets';
+  goView(targetView);
+  if (sortMode === 'anchors') renderAnchors();
+  else renderPresetLibrary();
 }
-function openSortDialog(mode='presets') {
-  if (!els.sortDialog) return;
-  setSortMode(mode);
-  if (!els.sortDialog.open) els.sortDialog.showModal();
+function exitSortMode() {
+  const previous = sortMode;
+  sortMode = '';
+  activeSortHost = null;
+  sortDragState = null;
+  if (previous === 'anchors') renderAnchors();
+  else renderPresetLibrary();
+  showToast('排序已保存');
+}
+function enterSortMode(mode) {
+  sortMode = mode === 'anchors' ? 'anchors' : 'presets';
+  try { navigator.vibrate?.(12); } catch {}
+  if (sortMode === 'anchors') renderAnchors();
+  else renderPresetLibrary();
 }
 function bindLongPressSort(card, mode) {
   if (!card) return;
@@ -1203,9 +1209,8 @@ function bindLongPressSort(card, mode) {
       timer = 0;
       triggered = true;
       card.classList.add('long-press-active');
-      try { navigator.vibrate?.(12); } catch {}
-      openSortDialog(mode);
       window.setTimeout(() => card.classList.remove('long-press-active'), 180);
+      enterSortMode(mode);
     }, 460);
   });
   card.addEventListener('pointermove', (event) => {
@@ -1222,14 +1227,14 @@ function bindLongPressSort(card, mode) {
   });
 }
 function updateSortIndexes() {
-  els.sortList?.querySelectorAll('.sort-item').forEach((row, index) => {
+  activeSortHost?.querySelectorAll('.sort-item').forEach((row, index) => {
     const badge = row.querySelector('.sort-index');
     if (badge) badge.textContent = String(index + 1);
   });
 }
 function persistSortFromDom() {
-  if (!els.sortList) return;
-  const ids = [...els.sortList.querySelectorAll('.sort-item')].map(row => row.dataset.id).filter(Boolean);
+  if (!activeSortHost || !sortMode) return;
+  const ids = [...activeSortHost.querySelectorAll('.sort-item')].map(row => row.dataset.id).filter(Boolean);
   const source = sortItems();
   const byId = new Map(source.map(item => [item.id, item]));
   const seen = new Set(ids);
@@ -1239,31 +1244,30 @@ function persistSortFromDom() {
   if (sortMode === 'anchors') {
     anchors = next;
     saveJson(ANCHORS_KEY, anchors);
-    renderAnchors();
+    renderAnchorPicker();
     updateAssembly();
   } else {
     presets = next;
     saveJson(PRESETS_KEY, presets);
     renderPresetSelect();
-    renderPresetLibrary();
     updateAssembly();
   }
 }
 function moveSortDrag(event) {
   const state = sortDragState;
-  if (!state || state.pointerId !== event.pointerId || !els.sortList) return;
+  if (!state || state.pointerId !== event.pointerId || !activeSortHost) return;
   event.preventDefault();
   const oldPointerEvents = state.row.style.pointerEvents;
   state.row.style.pointerEvents = 'none';
   const hit = document.elementFromPoint(event.clientX, event.clientY);
   state.row.style.pointerEvents = oldPointerEvents;
   const target = hit?.closest?.('.sort-item');
-  if (!target || target === state.row || target.parentElement !== els.sortList) return;
+  if (!target || target === state.row || target.parentElement !== activeSortHost) return;
   const rect = target.getBoundingClientRect();
   if (event.clientY < rect.top + rect.height / 2) {
-    els.sortList.insertBefore(state.row, target);
+    activeSortHost.insertBefore(state.row, target);
   } else {
-    els.sortList.insertBefore(state.row, target.nextSibling);
+    activeSortHost.insertBefore(state.row, target.nextSibling);
   }
   updateSortIndexes();
 }
@@ -1277,15 +1281,35 @@ function finishSortDrag(event) {
   sortDragState = null;
   persistSortFromDom();
 }
-function renderSortList() {
-  if (!els.sortList) return;
-  els.sortList.replaceChildren();
-  const items = sortItems();
+function renderInlineSort(host, mode) {
+  if (!host) return;
+  activeSortHost = host;
+  host.replaceChildren();
+
+  const toolbar = document.createElement('div');
+  toolbar.className = 'inline-sort-toolbar';
+
+  const tabs = document.createElement('div');
+  tabs.className = 'inline-sort-tabs';
+  const presetTab = makeButton('预设', 'inline-sort-tab' + (mode === 'presets' ? ' active' : ''), () => setSortMode('presets'));
+  const anchorTab = makeButton('角色', 'inline-sort-tab' + (mode === 'anchors' ? ' active' : ''), () => setSortMode('anchors'));
+  tabs.append(presetTab, anchorTab);
+
+  const done = makeButton('完成', 'primary-btn inline-sort-done', exitSortMode);
+  toolbar.append(tabs, done);
+
+  const hint = document.createElement('p');
+  hint.className = 'subtle inline-sort-hint';
+  hint.textContent = '按住右侧把手，上下拖动。松手立即保存顺序。';
+
+  host.append(toolbar, hint);
+
+  const items = sortItems(mode);
   if (!items.length) {
     const note = document.createElement('div');
     note.className = 'empty-note';
-    note.textContent = sortMode === 'anchors' ? '还没有角色可以排序。' : '还没有预设可以排序。';
-    els.sortList.appendChild(note);
+    note.textContent = mode === 'anchors' ? '还没有角色可以排序。' : '还没有预设可以排序。';
+    host.appendChild(note);
     return;
   }
 
@@ -1300,7 +1324,7 @@ function renderSortList() {
 
     const name = document.createElement('strong');
     name.className = 'sort-item-name';
-    name.textContent = item.name || (sortMode === 'anchors' ? '未命名角色' : '未命名预设');
+    name.textContent = item.name || (mode === 'anchors' ? '未命名角色' : '未命名预设');
 
     const handle = document.createElement('button');
     handle.type = 'button';
@@ -1320,8 +1344,8 @@ function renderSortList() {
     handle.addEventListener('pointerup', finishSortDrag);
     handle.addEventListener('pointercancel', finishSortDrag);
 
+    host.appendChild(row);
     row.append(number, name, handle);
-    els.sortList.appendChild(row);
   });
 }
 
@@ -1535,6 +1559,7 @@ function inspectPresetGeneration(params){
 }
 function renderPresetLibrary() {
   els.presetList.innerHTML = '';
+  if (sortMode === 'presets') { renderInlineSort(els.presetList,'presets'); return; }
   for (const p of presets) {
     const card=document.createElement('article'); card.className='library-card';
     const title=document.createElement('div'); title.className='library-title';
@@ -1582,6 +1607,7 @@ function saveDefaultPromptEditor() {
 }
 function renderAnchors() {
   els.anchorList.innerHTML='';
+  if (sortMode === 'anchors') { renderInlineSort(els.anchorList,'anchors'); return; }
   for (const a of anchors) {
     const card=document.createElement('article'); card.className='library-card';
     const title=document.createElement('div'); title.className='library-title';
@@ -4186,9 +4212,6 @@ els.savePresetBtn.addEventListener('click',()=>{
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
-els.sortPresetTab?.addEventListener('click',()=>setSortMode('presets'));
-els.sortAnchorTab?.addEventListener('click',()=>setSortMode('anchors'));
-els.closeSortBtn?.addEventListener('click',()=>{els.sortDialog?.close();showToast('排序已保存');});
 els.addOutfitBtn?.addEventListener('click',openOutfitCreator);
 els.saveOutfitBtn?.addEventListener('click',saveSharedOutfit);
 els.saveAnchorBtn.addEventListener('click',()=>{

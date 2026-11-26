@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=63" />
+  <link rel="stylesheet" href="./app.css?v=64" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -792,27 +792,6 @@
   </dialog>
 
 
-  <dialog id="sortDialog" class="modal sort-modal">
-    <section class="modal-panel sort-modal-panel">
-      <div class="modal-head">
-        <div>
-          <p class="kicker">Reorder</p>
-          <h2>排序</h2>
-        </div>
-        <button class="icon-btn" type="button" data-close="sortDialog" aria-label="关闭排序">×</button>
-      </div>
-      <div class="sort-mode-tabs" role="tablist" aria-label="排序类型">
-        <button id="sortPresetTab" class="sort-mode-tab active" type="button" role="tab" aria-selected="true">预设</button>
-        <button id="sortAnchorTab" class="sort-mode-tab" type="button" role="tab" aria-selected="false">角色</button>
-      </div>
-      <p class="subtle sort-hint">按住右侧把手，上下拖动。顺序会立即保存。</p>
-      <div id="sortList" class="sort-list"></div>
-      <div class="settings-actions sort-actions">
-        <button id="closeSortBtn" class="primary-btn" type="button">完成</button>
-      </div>
-    </section>
-  </dialog>
-
   <div id="galleryViewer" class="gallery-viewer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="图库大图预览">
     <div class="gallery-viewer-top">
       <div>
@@ -831,6 +810,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=105"></script>
+  <script type="module" src="./app.js?v=106"></script>
 </body>
 </html>
