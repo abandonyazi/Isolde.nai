@@ -395,7 +395,7 @@ small { display:block; margin-top:6px; color:var(--muted); line-height:1.45; }
   padding:0 14px;
   display:flex;
   align-items:center;
-  justify-content:space-between;
+  justify-content:flex-end;
   gap:10px;
   cursor:pointer;
   color:var(--text);
@@ -1373,32 +1373,6 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   padding:8px 0 10px;
   background:var(--bg);
 }
-.inline-sort-tabs{
-  display:grid;
-  grid-template-columns:1fr 1fr;
-  gap:6px;
-  padding:4px;
-  min-width:154px;
-  border:1px solid var(--line);
-  border-radius:14px;
-  background:rgba(145,179,207,.10);
-}
-.inline-sort-tab{
-  min-height:36px;
-  border:0;
-  border-radius:10px;
-  padding:0 14px;
-  background:transparent;
-  color:var(--muted);
-  font:inherit;
-  font-size:13px;
-  font-weight:750;
-}
-.inline-sort-tab.active{
-  background:var(--card);
-  color:var(--text);
-  box-shadow:var(--shadow);
-}
 .inline-sort-done{
   min-height:40px;
   padding:0 18px;
@@ -1460,15 +1434,12 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   background:var(--accent-soft);
   color:var(--accent-strong);
 }
-:root[data-theme="dark"] .inline-sort-tabs{background:rgba(111,154,189,.08)}
 :root[data-theme="dark"] .sort-drag-handle{background:rgba(111,154,189,.10)}
 @media(max-width:560px){
   .inline-sort-toolbar{
     top:max(0px,env(safe-area-inset-top));
     padding-top:6px;
   }
-  .inline-sort-tabs{min-width:142px}
-  .inline-sort-tab{padding:0 12px}
   .inline-sort-done{min-height:38px;padding:0 16px}
   .sort-item{min-height:60px}
   .sort-drag-handle{height:44px}

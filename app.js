@@ -1163,13 +1163,6 @@ function makeButton(text, cls, fn) {
 function sortItems(mode=sortMode) {
   return mode === 'anchors' ? anchors : presets;
 }
-function setSortMode(mode) {
-  sortMode = mode === 'anchors' ? 'anchors' : 'presets';
-  const targetView = sortMode === 'anchors' ? 'anchors' : 'presets';
-  goView(targetView);
-  if (sortMode === 'anchors') renderAnchors();
-  else renderPresetLibrary();
-}
 function exitSortMode() {
   const previous = sortMode;
   sortMode = '';
@@ -1289,14 +1282,8 @@ function renderInlineSort(host, mode) {
   const toolbar = document.createElement('div');
   toolbar.className = 'inline-sort-toolbar';
 
-  const tabs = document.createElement('div');
-  tabs.className = 'inline-sort-tabs';
-  const presetTab = makeButton('预设', 'inline-sort-tab' + (mode === 'presets' ? ' active' : ''), () => setSortMode('presets'));
-  const anchorTab = makeButton('角色', 'inline-sort-tab' + (mode === 'anchors' ? ' active' : ''), () => setSortMode('anchors'));
-  tabs.append(presetTab, anchorTab);
-
   const done = makeButton('完成', 'primary-btn inline-sort-done', exitSortMode);
-  toolbar.append(tabs, done);
+  toolbar.append(done);
 
   const hint = document.createElement('p');
   hint.className = 'subtle inline-sort-hint';
