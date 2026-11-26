@@ -48,6 +48,7 @@ const els = {
   watermarkFile: $('watermarkFile'), uploadWatermarkBtn: $('uploadWatermarkBtn'), removeWatermarkBtn: $('removeWatermarkBtn'), watermarkOpacity: $('watermarkOpacity'), watermarkOpacityValue: $('watermarkOpacityValue'), watermarkPreviewWrap: $('watermarkPreviewWrap'), watermarkPreview: $('watermarkPreview'), watermarkStatus: $('watermarkStatus'),
   referenceModelHint: $('referenceModelHint'), referenceEnabled: $('referenceEnabled'), referenceFile: $('referenceFile'), uploadReferenceBtn: $('uploadReferenceBtn'), removeReferenceBtn: $('removeReferenceBtn'), referencePreviewWrap: $('referencePreviewWrap'), referencePreview: $('referencePreview'), referenceStatus: $('referenceStatus'), referenceMode: $('referenceMode'), referenceStrength: $('referenceStrength'), referenceStrengthValue: $('referenceStrengthValue'), referenceFidelity: $('referenceFidelity'), referenceFidelityValue: $('referenceFidelityValue'),
   vibeEnabled: $('vibeEnabled'), vibeFile: $('vibeFile'), uploadVibeBtn: $('uploadVibeBtn'), removeVibeBtn: $('removeVibeBtn'), vibePreviewWrap: $('vibePreviewWrap'), vibePreview: $('vibePreview'), vibeStatus: $('vibeStatus'), vibeStackSummary: $('vibeStackSummary'), vibeItemsEditor: $('vibeItemsEditor'), vibePresetSelect: $('vibePresetSelect'), loadVibePresetBtn: $('loadVibePresetBtn'), appendVibePresetBtn: $('appendVibePresetBtn'), saveVibePresetBtn: $('saveVibePresetBtn'), deleteVibePresetBtn: $('deleteVibePresetBtn'), vibeStrength: $('vibeStrength'), vibeStrengthValue: $('vibeStrengthValue'), vibeInformation: $('vibeInformation'), vibeInformationValue: $('vibeInformationValue'),
+  sortDialog: $('sortDialog'), sortList: $('sortList'), sortPresetTab: $('sortPresetTab'), sortAnchorTab: $('sortAnchorTab'), closeSortBtn: $('closeSortBtn'),
   toast: $('toast')
 };
 
@@ -91,6 +92,8 @@ let currentNaiInspect = null;
 let zipWorkerReady = false;
 let zipWorkerInitPromise = null;
 let preparedGalleryZip = null;
+let sortMode = 'presets';
+let sortDragState = null;
 
 
 
@@ -1156,6 +1159,172 @@ function makeButton(text, cls, fn) {
   const b = document.createElement('button');
   b.type='button'; b.textContent=text; b.className=cls; b.addEventListener('click',fn); return b;
 }
+
+function sortItems(mode=sortMode) {
+  return mode === 'anchors' ? anchors : presets;
+}
+function updateSortTabs() {
+  els.sortPresetTab?.classList.toggle('active', sortMode === 'presets');
+  els.sortAnchorTab?.classList.toggle('active', sortMode === 'anchors');
+  els.sortPresetTab?.setAttribute('aria-selected', String(sortMode === 'presets'));
+  els.sortAnchorTab?.setAttribute('aria-selected', String(sortMode === 'anchors'));
+}
+function setSortMode(mode) {
+  sortMode = mode === 'anchors' ? 'anchors' : 'presets';
+  updateSortTabs();
+  renderSortList();
+}
+function openSortDialog(mode='presets') {
+  if (!els.sortDialog) return;
+  setSortMode(mode);
+  if (!els.sortDialog.open) els.sortDialog.showModal();
+}
+function bindLongPressSort(card, mode) {
+  if (!card) return;
+  card.classList.add('sortable-library-card');
+  let timer = 0;
+  let startX = 0;
+  let startY = 0;
+  let triggered = false;
+  const clear = () => {
+    if (timer) {
+      clearTimeout(timer);
+      timer = 0;
+    }
+  };
+  card.addEventListener('pointerdown', (event) => {
+    if (event.pointerType === 'mouse' && event.button !== 0) return;
+    if (event.target.closest('button,a,input,select,textarea,label')) return;
+    clear();
+    triggered = false;
+    startX = event.clientX;
+    startY = event.clientY;
+    timer = window.setTimeout(() => {
+      timer = 0;
+      triggered = true;
+      card.classList.add('long-press-active');
+      try { navigator.vibrate?.(12); } catch {}
+      openSortDialog(mode);
+      window.setTimeout(() => card.classList.remove('long-press-active'), 180);
+    }, 460);
+  });
+  card.addEventListener('pointermove', (event) => {
+    if (!timer) return;
+    if (Math.hypot(event.clientX - startX, event.clientY - startY) > 10) clear();
+  });
+  card.addEventListener('pointerup', clear);
+  card.addEventListener('pointercancel', clear);
+  card.addEventListener('contextmenu', (event) => {
+    if (timer || triggered) {
+      event.preventDefault();
+      clear();
+    }
+  });
+}
+function updateSortIndexes() {
+  els.sortList?.querySelectorAll('.sort-item').forEach((row, index) => {
+    const badge = row.querySelector('.sort-index');
+    if (badge) badge.textContent = String(index + 1);
+  });
+}
+function persistSortFromDom() {
+  if (!els.sortList) return;
+  const ids = [...els.sortList.querySelectorAll('.sort-item')].map(row => row.dataset.id).filter(Boolean);
+  const source = sortItems();
+  const byId = new Map(source.map(item => [item.id, item]));
+  const seen = new Set(ids);
+  const next = ids.map(id => byId.get(id)).filter(Boolean);
+  source.forEach(item => { if (!seen.has(item.id)) next.push(item); });
+
+  if (sortMode === 'anchors') {
+    anchors = next;
+    saveJson(ANCHORS_KEY, anchors);
+    renderAnchors();
+    updateAssembly();
+  } else {
+    presets = next;
+    saveJson(PRESETS_KEY, presets);
+    renderPresetSelect();
+    renderPresetLibrary();
+    updateAssembly();
+  }
+}
+function moveSortDrag(event) {
+  const state = sortDragState;
+  if (!state || state.pointerId !== event.pointerId || !els.sortList) return;
+  event.preventDefault();
+  const oldPointerEvents = state.row.style.pointerEvents;
+  state.row.style.pointerEvents = 'none';
+  const hit = document.elementFromPoint(event.clientX, event.clientY);
+  state.row.style.pointerEvents = oldPointerEvents;
+  const target = hit?.closest?.('.sort-item');
+  if (!target || target === state.row || target.parentElement !== els.sortList) return;
+  const rect = target.getBoundingClientRect();
+  if (event.clientY < rect.top + rect.height / 2) {
+    els.sortList.insertBefore(state.row, target);
+  } else {
+    els.sortList.insertBefore(state.row, target.nextSibling);
+  }
+  updateSortIndexes();
+}
+function finishSortDrag(event) {
+  const state = sortDragState;
+  if (!state || state.pointerId !== event.pointerId) return;
+  try {
+    if (state.handle.hasPointerCapture?.(event.pointerId)) state.handle.releasePointerCapture(event.pointerId);
+  } catch {}
+  state.row.classList.remove('dragging');
+  sortDragState = null;
+  persistSortFromDom();
+}
+function renderSortList() {
+  if (!els.sortList) return;
+  els.sortList.replaceChildren();
+  const items = sortItems();
+  if (!items.length) {
+    const note = document.createElement('div');
+    note.className = 'empty-note';
+    note.textContent = sortMode === 'anchors' ? '还没有角色可以排序。' : '还没有预设可以排序。';
+    els.sortList.appendChild(note);
+    return;
+  }
+
+  items.forEach((item, index) => {
+    const row = document.createElement('div');
+    row.className = 'sort-item';
+    row.dataset.id = item.id;
+
+    const number = document.createElement('span');
+    number.className = 'sort-index';
+    number.textContent = String(index + 1);
+
+    const name = document.createElement('strong');
+    name.className = 'sort-item-name';
+    name.textContent = item.name || (sortMode === 'anchors' ? '未命名角色' : '未命名预设');
+
+    const handle = document.createElement('button');
+    handle.type = 'button';
+    handle.className = 'sort-drag-handle';
+    handle.setAttribute('aria-label', '拖动排序');
+    handle.title = '按住拖动';
+    handle.textContent = '≡';
+
+    handle.addEventListener('pointerdown', (event) => {
+      if (event.pointerType === 'mouse' && event.button !== 0) return;
+      event.preventDefault();
+      sortDragState = { row, handle, pointerId: event.pointerId };
+      row.classList.add('dragging');
+      try { handle.setPointerCapture(event.pointerId); } catch {}
+    });
+    handle.addEventListener('pointermove', moveSortDrag);
+    handle.addEventListener('pointerup', finishSortDrag);
+    handle.addEventListener('pointercancel', finishSortDrag);
+
+    row.append(number, name, handle);
+    els.sortList.appendChild(row);
+  });
+}
+
 function collectChatu8Presets() {
   try {
     if (window.parent && window.parent !== window) {
@@ -1375,7 +1544,7 @@ function renderPresetLibrary() {
     actions.appendChild(makeButton('编辑','small-btn',()=>openPresetEditor(p)));
     actions.appendChild(makeButton('设为当前','small-btn',()=>selectPromptPreset(p.id,{goWorkbench:true})));
     if (presets.length>1) actions.appendChild(makeButton('删除','small-btn danger',()=>deletePreset(p.id)));
-    card.appendChild(actions); els.presetList.appendChild(card);
+    card.appendChild(actions); bindLongPressSort(card,'presets'); els.presetList.appendChild(card);
   }
 }
 function openPresetEditor(p=null) {
@@ -1434,7 +1603,7 @@ function renderAnchors() {
       renderAnchors(); renderAnchorPicker(); updateAssembly();
     }));
     actions.appendChild(makeButton('删除','small-btn danger',()=>deleteAnchor(a.id)));
-    card.appendChild(actions); els.anchorList.appendChild(card);
+    card.appendChild(actions); bindLongPressSort(card,'anchors'); els.anchorList.appendChild(card);
   }
   if (!anchors.length) {
     const note=document.createElement('div'); note.className='empty-note'; note.textContent='还没有角色。点右上角「新增角色」开始存锚点。'; els.anchorList.appendChild(note);
@@ -4017,6 +4186,9 @@ els.savePresetBtn.addEventListener('click',()=>{
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
+els.sortPresetTab?.addEventListener('click',()=>setSortMode('presets'));
+els.sortAnchorTab?.addEventListener('click',()=>setSortMode('anchors'));
+els.closeSortBtn?.addEventListener('click',()=>{els.sortDialog?.close();showToast('排序已保存');});
 els.addOutfitBtn?.addEventListener('click',openOutfitCreator);
 els.saveOutfitBtn?.addEventListener('click',saveSharedOutfit);
 els.saveAnchorBtn.addEventListener('click',()=>{

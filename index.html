@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=62" />
+  <link rel="stylesheet" href="./app.css?v=63" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -265,7 +265,7 @@
         <div>
           <p class="kicker">Library</p>
           <h2>画师串与正负面预设</h2>
-          <p class="subtle">保存常用画师串、正负面词和基础生成参数。工作台只需要选名字。</p>
+          <p class="subtle">保存常用画师串、正负面词和基础生成参数。工作台只需要选名字。长按任意预设卡片可进入排序。</p>
         </div>
         <div class="page-head-actions"><button id="importChatu8Btn" class="secondary-btn" type="button">导入智绘姬</button><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button><button id="defaultPromptBtn" class="secondary-btn" type="button">默认正负面</button></div>
       </div>
@@ -277,7 +277,7 @@
         <div>
           <p class="kicker">Characters</p>
           <h2>角色锚点</h2>
-          <p class="subtle">一人一条锚点。画面词里写 [角色名] 会自动注入对应锚点；也仍可在工作台直接勾选角色。</p>
+          <p class="subtle">一人一条锚点。画面词里写 [角色名] 会自动注入对应锚点；也仍可在工作台直接勾选角色。长按任意角色卡片可进入排序。</p>
         </div>
         <div class="page-head-actions anchor-page-actions">
           <button id="addOutfitBtn" class="secondary-btn" type="button">+ 服设</button>
@@ -791,6 +791,28 @@
     </form>
   </dialog>
 
+
+  <dialog id="sortDialog" class="modal sort-modal">
+    <section class="modal-panel sort-modal-panel">
+      <div class="modal-head">
+        <div>
+          <p class="kicker">Reorder</p>
+          <h2>排序</h2>
+        </div>
+        <button class="icon-btn" type="button" data-close="sortDialog" aria-label="关闭排序">×</button>
+      </div>
+      <div class="sort-mode-tabs" role="tablist" aria-label="排序类型">
+        <button id="sortPresetTab" class="sort-mode-tab active" type="button" role="tab" aria-selected="true">预设</button>
+        <button id="sortAnchorTab" class="sort-mode-tab" type="button" role="tab" aria-selected="false">角色</button>
+      </div>
+      <p class="subtle sort-hint">按住右侧把手，上下拖动。顺序会立即保存。</p>
+      <div id="sortList" class="sort-list"></div>
+      <div class="settings-actions sort-actions">
+        <button id="closeSortBtn" class="primary-btn" type="button">完成</button>
+      </div>
+    </section>
+  </dialog>
+
   <div id="galleryViewer" class="gallery-viewer" aria-hidden="true" role="dialog" aria-modal="true" aria-label="图库大图预览">
     <div class="gallery-viewer-top">
       <div>
@@ -809,6 +831,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=104"></script>
+  <script type="module" src="./app.js?v=105"></script>
 </body>
 </html>
