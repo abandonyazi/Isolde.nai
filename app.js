@@ -32,10 +32,10 @@ const els = {
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), sortPresetsBtn: $('sortPresetsBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
   defaultPromptDialog: $('defaultPromptDialog'), defaultPromptPositive: $('defaultPromptPositive'), defaultPromptNegative: $('defaultPromptNegative'), saveDefaultPromptBtn: $('saveDefaultPromptBtn'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
-  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
+  anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), sortAnchorsBtn: $('sortAnchorsBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
   outfitDialog: $('outfitDialog'), outfitForm: $('outfitForm'), outfitName: $('outfitName'), outfitPrompt: $('outfitPrompt'), outfitCharacterList: $('outfitCharacterList'), saveOutfitBtn: $('saveOutfitBtn'),
   workbenchOutfitPicker: $('workbenchOutfitPicker'),
   galleryGrid: $('galleryGrid'), galleryCount: $('galleryCount'), galleryPresetFilter: $('galleryPresetFilter'), galleryPagination: $('galleryPagination'), clearGalleryBtn: $('clearGalleryBtn'), batchDeleteGalleryBtn: $('batchDeleteGalleryBtn'),
@@ -4186,6 +4186,7 @@ els.naiInspectFile?.addEventListener('change',async()=>{
 });
 els.addInspectedPresetBtn?.addEventListener('click',addInspectedPreset);
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
+els.sortPresetsBtn?.addEventListener('click',()=>enterSortMode('presets'));
 els.defaultPromptBtn?.addEventListener('click',openDefaultPromptEditor);
 els.saveDefaultPromptBtn?.addEventListener('click',saveDefaultPromptEditor);
 els.savePresetBtn.addEventListener('click',()=>{
@@ -4199,6 +4200,7 @@ els.savePresetBtn.addEventListener('click',()=>{
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
 els.addAnchorBtn.addEventListener('click',()=>openAnchorEditor());
+els.sortAnchorsBtn?.addEventListener('click',()=>enterSortMode('anchors'));
 els.addOutfitBtn?.addEventListener('click',openOutfitCreator);
 els.saveOutfitBtn?.addEventListener('click',saveSharedOutfit);
 els.saveAnchorBtn.addEventListener('click',()=>{

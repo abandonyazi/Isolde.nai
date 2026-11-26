@@ -1444,3 +1444,10 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   .sort-item{min-height:60px}
   .sort-drag-handle{height:44px}
 }
+
+
+/* v115: desktop mouse entry for ordering; touch keeps long-press entry */
+.desktop-sort-entry{display:none!important}
+@media (hover:hover) and (pointer:fine){
+  .desktop-sort-entry{display:inline-flex!important;align-items:center;justify-content:center}
+}

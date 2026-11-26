@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=65" />
+  <link rel="stylesheet" href="./app.css?v=66" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -267,7 +267,7 @@
           <h2>画师串与正负面预设</h2>
           <p class="subtle">保存常用画师串、正负面词和基础生成参数。工作台只需要选名字。长按任意预设卡片可进入排序。</p>
         </div>
-        <div class="page-head-actions"><button id="importChatu8Btn" class="secondary-btn" type="button">导入智绘姬</button><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button><button id="defaultPromptBtn" class="secondary-btn" type="button">默认正负面</button></div>
+        <div class="page-head-actions"><button id="sortPresetsBtn" class="secondary-btn desktop-sort-entry" type="button">排序</button><button id="importChatu8Btn" class="secondary-btn" type="button">导入智绘姬</button><button id="inspectNaiBtn" class="secondary-btn" type="button">解析 NAI 图片</button><button id="addPresetBtn" class="primary-btn" type="button">新增预设</button><button id="defaultPromptBtn" class="secondary-btn" type="button">默认正负面</button></div>
       </div>
       <div id="presetList" class="library-list"></div>
     </section>
@@ -280,6 +280,7 @@
           <p class="subtle">一人一条锚点。画面词里写 [角色名] 会自动注入对应锚点；也仍可在工作台直接勾选角色。长按任意角色卡片可进入排序。</p>
         </div>
         <div class="page-head-actions anchor-page-actions">
+          <button id="sortAnchorsBtn" class="secondary-btn desktop-sort-entry" type="button">排序</button>
           <button id="addOutfitBtn" class="secondary-btn" type="button">+ 服设</button>
           <button id="addAnchorBtn" class="primary-btn" type="button">新增角色</button>
         </div>
@@ -810,6 +811,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=108"></script>
+  <script type="module" src="./app.js?v=109"></script>
 </body>
 </html>
