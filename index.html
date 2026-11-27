@@ -342,8 +342,11 @@
         <label class="field">
           <span>接口格式</span>
           <select id="apiFormat">
-            <option value="nai">NovelAI 格式</option>
-            <option value="openai">OpenAI 兼容格式</option>
+            <option value="nai">NovelAI Native</option>
+            <option value="openai">OpenAI Chat</option>
+            <option value="openai-images">OpenAI Images</option>
+            <option value="gemini">Gemini</option>
+            <option value="auto">自动识别</option>
           </select>
         </label>
 
@@ -811,6 +814,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=109"></script>
+  <script type="module" src="./app.js?v=110"></script>
 </body>
 </html>
