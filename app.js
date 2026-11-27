@@ -495,7 +495,8 @@ function loadState() {
     negative: String(savedDefaultPrompts?.negative || '')
   };
   anchors = loadJson(ANCHORS_KEY, []);
-  apiPresets = loadJson(API_PRESETS_KEY, []).map(item => ({
+  const storedApiPresets = loadJson(API_PRESETS_KEY, []);
+  apiPresets = (Array.isArray(storedApiPresets) ? storedApiPresets : []).map(item => ({
     ...item,
     apiFormat: normalizeApiFormat(item?.apiFormat),
   }));
