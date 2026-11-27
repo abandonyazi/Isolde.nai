@@ -314,9 +314,28 @@ function normalizeBase(raw) {
   if (!/^https?:\/\//i.test(url)) throw new Error('接口地址需要以 http:// 或 https:// 开头');
   return url.replace(/\/ai\/generate-image$/i,'');
 }
+function apiFormatLabel(format) {
+  return ({
+    nai:'NovelAI',
+    openai:'OpenAI Chat',
+    'openai-images':'OpenAI Images',
+    gemini:'Gemini',
+    auto:'自动识别'
+  })[format] || '自定义';
+}
 function normalizedEndpoint(format, raw) {
   const base = normalizeBase(raw);
   if (format === 'nai') return base;
+  if (format === 'openai-images') {
+    if (/\/images\/generations$/i.test(base)) return base;
+    if (/\/v1$/i.test(base)) return `${base}/images/generations`;
+    return `${base}/v1/images/generations`;
+  }
+  if (format === 'gemini') {
+    if (/:generateContent(?:\?.*)?$/i.test(base)) return base;
+    if (/\/v1beta\/models\/[^/]+$/i.test(base)) return `${base}:generateContent`;
+    return base;
+  }
   if (/\/chat\/completions$/i.test(base)) return base;
   if (/\/v1$/i.test(base)) return `${base}/chat/completions`;
   return `${base}/v1/chat/completions`;
@@ -328,15 +347,30 @@ function naiFetchBase(raw) {
   const base = normalizeBase(raw);
   return isOfficialBase(base) ? NAI_PROXY_BASE : base;
 }
+function naiFeatureBase(raw) {
+  let base=normalizeBase(raw);
+  if(isOfficialBase(base)) return NAI_PROXY_BASE;
+  base=base
+    .replace(/\/v1\/chat\/completions$/i,'')
+    .replace(/\/v1\/images\/generations$/i,'')
+    .replace(/\/chat\/completions$/i,'')
+    .replace(/\/images\/generations$/i,'')
+    .replace(/\/v1beta\/models\/[^/]+:generateContent$/i,'')
+    .replace(/\/v1beta\/models\/[^/]+$/i,'')
+    .replace(/\/v1$/i,'')
+    .replace(/\/+$/,'');
+  return base;
+}
 function updateEndpointUi() {
   if (els.apiFormat.value === 'nai' && !els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
 }
 function apiPresetDefaultLabel(item) {
+  const label=apiFormatLabel(item?.apiFormat || 'nai');
   try {
     const host = new URL(item.endpoint).host || item.endpoint;
-    return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${host}`;
+    return `${label} · ${host}`;
   } catch {
-    return `${item.apiFormat === 'nai' ? 'NovelAI' : 'OpenAI'} · ${item.endpoint || '未命名'}`;
+    return `${label} · ${item.endpoint || '未命名'}`;
   }
 }
 function apiPresetLabel(item) {
@@ -2080,16 +2114,120 @@ async function pngFromMaybeZip(bytes) {
 if(!key) throw new Error('ZIP 中没有找到 PNG');
   return new Blob([files[key]],{type:'image/png'});
 }
-function parseOpenAiImage(text) {
-  let data; try{data=JSON.parse(text);}catch{throw new Error('OpenAI 接口返回的不是 JSON');}
-  const content=data?.choices?.[0]?.message?.content;
-  if(typeof content!=='string') throw new Error('接口没有返回图片内容');
-  const m=content.match(/data:image\/\w+;base64,([A-Za-z0-9+/=]+)/);
-  if(!m) throw new Error(content.trim()||'接口没有返回图片数据');
-  const binary=atob(m[1]); const bytes=new Uint8Array(binary.length);
-  for(let i=0;i<binary.length;i++) bytes[i]=binary.charCodeAt(i);
-  return new Blob([bytes],{type:'image/png'});
+function base64ImageBlob(value,mime='image/png'){
+  const raw=String(value||'').trim();
+  const match=raw.match(/^data:(image\/[a-z0-9.+-]+);base64,(.*)$/is);
+  const type=match?.[1]||mime||'image/png';
+  const body=(match?match[2]:raw).replace(/\s+/g,'');
+  if(body.length<64) throw new Error('图片 Base64 数据为空');
+  const binary=atob(body);
+  const bytes=new Uint8Array(binary.length);
+  for(let i=0;i<binary.length;i++)bytes[i]=binary.charCodeAt(i);
+  return new Blob([bytes],{type});
 }
+function imageCandidates(value,path='',out=[]){
+  if(value===null||value===undefined)return out;
+  if(typeof value==='string'){
+    const text=value.trim();
+    if(!text)return out;
+    const dataUrl=text.match(/data:image\/[a-z0-9.+-]+;base64,[A-Za-z0-9+/=\s]+/i);
+    if(dataUrl)out.push({kind:'base64',value:dataUrl[0],score:100,path});
+    else if(/^https?:\/\//i.test(text)&&/(?:url|image|img|output|result|data)/i.test(path))out.push({kind:'url',value:text,score:80,path});
+    else if(/^(?:iVBOR|\/9j\/|R0lGOD|UklGR)[A-Za-z0-9+/=\s]+$/.test(text.replace(/\s+/g,''))&&text.length>256)out.push({kind:'base64',value:text,score:70,path});
+    return out;
+  }
+  if(Array.isArray(value)){
+    value.forEach((item,index)=>imageCandidates(item,path+'.'+index,out));
+    return out;
+  }
+  if(typeof value==='object'){
+    for(const [key,item] of Object.entries(value)){
+      const next=path?path+'.'+key:key;
+      const lower=key.toLowerCase();
+      if(typeof item==='string'){
+        if(['b64_json','base64','image_base64','imagebase64','result'].includes(lower)&&item.trim().length>128){
+          out.push({kind:'base64',value:item,mime:String(value.mimeType||value.mime_type||'image/png'),score:lower==='b64_json'?120:105,path:next});
+          continue;
+        }
+        if(['url','image_url','imageurl'].includes(lower)&&/^https?:\/\//i.test(item.trim())){
+          out.push({kind:'url',value:item.trim(),score:115,path:next});
+          continue;
+        }
+        if(lower==='data'&&/(?:inlineData|inline_data)/i.test(path)&&item.trim().length>128){
+          out.push({kind:'base64',value:item,mime:String(value.mimeType||value.mime_type||'image/png'),score:125,path:next});
+          continue;
+        }
+      }
+      imageCandidates(item,next,out);
+    }
+  }
+  return out;
+}
+async function blobFromCandidate(candidate){
+  if(candidate.kind==='base64')return base64ImageBlob(candidate.value,candidate.mime);
+  const response=await fetch(candidate.value,{cache:'no-store'});
+  if(!response.ok)throw new Error(`图片 URL 读取失败 ${response.status}`);
+  const blob=await response.blob();
+  if(!blob.type.startsWith('image/'))throw new Error('图片 URL 返回的不是图片');
+  return blob;
+}
+async function parseUniversalImageResponse(resp){
+  const contentType=String(resp.headers.get('content-type')||'').toLowerCase();
+  const bytes=new Uint8Array(await resp.arrayBuffer());
+  if(!resp.ok){
+    const message=new TextDecoder().decode(bytes.slice(0,1200)).trim();
+    throw new Error(message||`接口错误 ${resp.status}`);
+  }
+  if(contentType.startsWith('image/'))return new Blob([bytes],{type:contentType.split(';')[0]||'image/png'});
+  if(isPng(bytes)||(bytes[0]===0x50&&bytes[1]===0x4b))return pngFromMaybeZip(bytes);
+  if(bytes.length>3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)return new Blob([bytes],{type:'image/jpeg'});
+  if(bytes.length>12&&String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP')return new Blob([bytes],{type:'image/webp'});
+  const text=new TextDecoder().decode(bytes).trim();
+  let data;
+  try{data=JSON.parse(text);}catch{
+    const candidates=imageCandidates(text,'text').sort((a,b)=>b.score-a.score);
+    if(candidates[0])return blobFromCandidate(candidates[0]);
+    throw new Error(text.slice(0,600)||'接口没有返回可识别的图片');
+  }
+  const candidates=imageCandidates(data).sort((a,b)=>b.score-a.score);
+  if(candidates[0])return blobFromCandidate(candidates[0]);
+  const message=data?.error?.message||data?.message||data?.error||data?.choices?.[0]?.message?.content;
+  throw new Error(typeof message==='string'&&message.trim()?message.trim().slice(0,700):'接口没有返回可识别的图片数据');
+}
+function buildOpenAiImagesBody(naiBody){
+  const p=naiBody.parameters;
+  return {
+    model:naiBody.model.replace(/-inpainting$/,''),
+    prompt:naiBody.input,
+    n:1,
+    size:`${p.width}x${p.height}`,
+    response_format:'b64_json',
+    negative_prompt:p.negative_prompt||'',
+    parameters:{...p}
+  };
+}
+function buildGeminiBody(naiBody){
+  const p=naiBody.parameters;
+  return {
+    contents:[{role:'user',parts:[{text:JSON.stringify({
+      prompt:naiBody.input,
+      negative_prompt:p.negative_prompt||'',
+      model:naiBody.model.replace(/-inpainting$/,''),
+      size:[p.width,p.height],
+      parameters:{...p}
+    })}]}],
+    generationConfig:{responseModalities:['TEXT','IMAGE']}
+  };
+}
+function requestHeaders(format,key){
+  if(format==='gemini')return {
+    Authorization:`Bearer ${key}`,
+    'x-goog-api-key':key,
+    'Content-Type':'application/json'
+  };
+  return {Authorization:`Bearer ${key}`,'Content-Type':'application/json'};
+}
+
 async function generate({forceSeed=null,throwOnError=false,promptOverride=null,sizeOverride=null}={}) {
   if(busy){if(throwOnError)throw new Error('上一张图片还在生成');return;}
   rehydrateConnectionFields();
@@ -2105,17 +2243,29 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
   const naiBody=buildNaiPayload(seed || null,promptOverride,sizeOverride);
   busy=true; els.generateBtn.disabled=true; els.generateLabel.textContent='生成中'; els.generateSpinner.classList.remove('hidden'); setConnectionState('ready','正在生成…');
   try{
-    await applyReferenceFeatures(naiBody,endpoint,key);
+    await applyReferenceFeatures(naiBody,els.endpoint.value,key);
     let blob;
-    if(els.apiFormat.value==='nai'){
-      const base=naiFetchBase(endpoint);
-      const resp=await fetch(`${base}/ai/generate-image`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/zip,image/png'},body:JSON.stringify(naiBody)});
-      const bytes=new Uint8Array(await resp.arrayBuffer());
-      if(!resp.ok) throw new Error(new TextDecoder().decode(bytes).slice(0,900).trim()||`接口错误 ${resp.status}`);
-      blob=await pngFromMaybeZip(bytes);
+    const format=els.apiFormat.value;
+    if(format==='nai'){
+      const base=naiFeatureBase(endpointRaw);
+      const resp=await fetch(`${base}/ai/generate-image`,{
+        method:'POST',
+        headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/zip,image/png'},
+        body:JSON.stringify(naiBody)
+      });
+      blob=await parseUniversalImageResponse(resp);
     }else{
-      const resp=await fetch(endpoint,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json'},body:JSON.stringify(buildOpenAiBody(naiBody))});
-      const text=await resp.text(); if(!resp.ok) throw new Error(text.slice(0,900)||`接口错误 ${resp.status}`); blob=parseOpenAiImage(text);
+      const body=format==='openai-images'
+        ? buildOpenAiImagesBody(naiBody)
+        : format==='gemini'
+          ? buildGeminiBody(naiBody)
+          : buildOpenAiBody(naiBody);
+      const resp=await fetch(endpoint,{
+        method:'POST',
+        headers:requestHeaders(format,key),
+        body:JSON.stringify(body)
+      });
+      blob=await parseUniversalImageResponse(resp);
     }
     showResult(blob,seed);
     const p=currentPreset();
@@ -2323,7 +2473,9 @@ async function testConnection(){
       const j=JSON.parse(txt); const tier=Number(j?.tier??0); const anlas=Number(j?.trainingStepsLeft?.fixedTrainingStepsLeft??0)+Number(j?.trainingStepsLeft?.purchasedTrainingSteps??0);
       els.settingsStatus.className='settings-status ok'; els.settingsStatus.textContent=`连通成功 · tier ${tier} · Anlas ${anlas}`; setConnectionState('ready',isOfficialBase(els.endpoint.value)?'NAI 官网 · 已连接':'自定义 NAI · 已连接');
     }else{
-      normalizedEndpoint('openai',els.endpoint.value); els.settingsStatus.className='settings-status ok'; els.settingsStatus.textContent='OpenAI 兼容接口已保存，直接试生成最可靠。';
+      normalizedEndpoint(els.apiFormat.value,els.endpoint.value);
+      els.settingsStatus.className='settings-status ok';
+      els.settingsStatus.textContent=`${apiFormatLabel(els.apiFormat.value)} 接口已保存，直接试生成最可靠。`;
     }
   }catch(e){els.settingsStatus.className='settings-status bad';els.settingsStatus.textContent=e?.message||String(e);setConnectionState('error','连接测试失败');}
 }
@@ -3158,7 +3310,7 @@ function bytesToBase64(bytes){
   for(let i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
   return btoa(binary);
 }
-async function encodedVibeFor(blob,model,information,base,key){
+async function encodedVibeFor(blob,model,information,base,key,format){
   const hash=await sha256Hex(blob);
   const info=Number(information).toFixed(2);
   const cacheKey=`vibe-cache:${hash}:${model}:${info}`;
@@ -3168,7 +3320,7 @@ async function encodedVibeFor(blob,model,information,base,key){
   const image=await blobToBase64(blob);
   const resp=await fetch(`${base}/ai/encode-vibe`,{
     method:'POST',
-    headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/octet-stream'},
+    headers:{...requestHeaders(format,key),Accept:'application/octet-stream'},
     body:JSON.stringify({
       image,
       model,
@@ -3188,12 +3340,11 @@ async function encodedVibeFor(blob,model,information,base,key){
   await putAssetRecord({key:cacheKey,encoding,updatedAt:Date.now(),model,information:Number(information)});
   return encoding;
 }
-async function applyReferenceFeatures(naiBody,endpoint,key){
+async function applyReferenceFeatures(naiBody,endpointRaw,key){
   const useReference=els.referenceEnabled.checked;
   const useVibe=els.vibeEnabled.checked;
   if(!useReference&&!useVibe)return naiBody;
   if(!naiBody.model.startsWith('nai-diffusion-4-5'))return naiBody;
-  if(els.apiFormat.value!=='nai')throw new Error('Reference / Vibe 目前只支持 NovelAI 格式接口');
   if(useReference&&useVibe)throw new Error('Precise Reference 和 Vibe 不能同时启用');
 
   if(useReference){
@@ -3228,7 +3379,7 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
       let encoded=vibeEncodingFor(item,naiBody.model,info);
       if(!encoded){
         if(!item.blob)throw new Error(`Vibe「${item.name||'未命名'}」没有当前模型 / Information 的编码，也没有原图可重新编码`);
-        encoded=await encodedVibeFor(item.blob,naiBody.model,info,base,key);
+        encoded=await encodedVibeFor(item.blob,naiBody.model,info,base,key,els.apiFormat.value);
       }
       encodings.push(encoded);
       strengths.push(strength);
