@@ -354,6 +354,20 @@ function naiFetchBase(raw) {
   const base = normalizeBase(raw);
   return isOfficialBase(base) ? NAI_PROXY_BASE : base;
 }
+function naiFeatureBase(raw) {
+  let base=normalizeBase(raw);
+  if(isOfficialBase(base)) return NAI_PROXY_BASE;
+  base=base
+    .replace(/\/v1\/chat\/completions$/i,'')
+    .replace(/\/v1\/images\/generations$/i,'')
+    .replace(/\/chat\/completions$/i,'')
+    .replace(/\/images\/generations$/i,'')
+    .replace(/\/v1$/i,'')
+    .replace(/\/v1beta\/models\/[^/]+:generateContent$/i,'')
+    .replace(/\/v1beta\/models\/[^/]+$/i,'')
+    .replace(/\/+$/,'');
+  return base;
+}
 function updateEndpointUi() {
   if (els.apiFormat.value === 'nai' && !els.endpoint.value.trim()) els.endpoint.value = OFFICIAL_BASE;
 }
@@ -2261,11 +2275,11 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
   const naiBody=buildNaiPayload(seed || null,promptOverride,sizeOverride);
   busy=true; els.generateBtn.disabled=true; els.generateLabel.textContent='生成中'; els.generateSpinner.classList.remove('hidden'); setConnectionState('ready','正在生成…');
   try{
-    await applyReferenceFeatures(naiBody,endpoint,key);
+    await applyReferenceFeatures(naiBody,els.endpoint.value,key);
     let blob;
     const apiFormat=normalizeApiFormat(els.apiFormat.value);
     if(apiFormat==='nai'){
-      const base=naiFetchBase(endpoint);
+      const base=naiFeatureBase(endpointRaw);
       const resp=await fetch(`${base}/ai/generate-image`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/zip,image/png'},body:JSON.stringify(naiBody)});
       blob=await parseUniversalImageResponse(resp);
     }else{
@@ -3324,7 +3338,7 @@ function bytesToBase64(bytes){
   for(let i=0;i<bytes.length;i+=chunk) binary+=String.fromCharCode(...bytes.subarray(i,i+chunk));
   return btoa(binary);
 }
-async function encodedVibeFor(blob,model,information,base,key){
+async function encodedVibeFor(blob,model,information,base,key,format){
   const hash=await sha256Hex(blob);
   const info=Number(information).toFixed(2);
   const cacheKey=`vibe-cache:${hash}:${model}:${info}`;
@@ -3334,7 +3348,7 @@ async function encodedVibeFor(blob,model,information,base,key){
   const image=await blobToBase64(blob);
   const resp=await fetch(`${base}/ai/encode-vibe`,{
     method:'POST',
-    headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/octet-stream'},
+    headers:{...requestHeadersForFormat(format,key),Accept:'application/octet-stream'},
     body:JSON.stringify({
       image,
       model,
@@ -3354,12 +3368,11 @@ async function encodedVibeFor(blob,model,information,base,key){
   await putAssetRecord({key:cacheKey,encoding,updatedAt:Date.now(),model,information:Number(information)});
   return encoding;
 }
-async function applyReferenceFeatures(naiBody,endpoint,key){
+async function applyReferenceFeatures(naiBody,endpointRaw,key){
   const useReference=els.referenceEnabled.checked;
   const useVibe=els.vibeEnabled.checked;
   if(!useReference&&!useVibe)return naiBody;
   if(!naiBody.model.startsWith('nai-diffusion-4-5'))return naiBody;
-  if(els.apiFormat.value!=='nai')throw new Error('Reference / Vibe 目前只支持 NovelAI 格式接口');
   if(useReference&&useVibe)throw new Error('Precise Reference 和 Vibe 不能同时启用');
 
   if(useReference){
@@ -3394,7 +3407,7 @@ async function applyReferenceFeatures(naiBody,endpoint,key){
       let encoded=vibeEncodingFor(item,naiBody.model,info);
       if(!encoded){
         if(!item.blob)throw new Error(`Vibe「${item.name||'未命名'}」没有当前模型 / Information 的编码，也没有原图可重新编码`);
-        encoded=await encodedVibeFor(item.blob,naiBody.model,info,base,key);
+        encoded=await encodedVibeFor(item.blob,naiBody.model,info,base,key,els.apiFormat.value);
       }
       encodings.push(encoded);
       strengths.push(strength);
