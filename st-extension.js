@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.90';
+const EXTENSION_ASSET_VERSION = '0.9.91';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
@@ -312,7 +312,7 @@ function installOrbDragging() {
 
   applyOrbPosition();
 }
-const DEFAULTS = { enabled: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0, smartSize: 'normal', fixedSize: '832x1216' };
+const DEFAULTS = { enabled: true, orbVisible: true, mode: 'smart', interval: 3, count: 2, contextMessages: 12, cycleSlotsUsed: 0, smartSize: 'normal', fixedSize: '832x1216' };
 
 let roundCounter = 0;
 let running = false;
@@ -409,12 +409,29 @@ function settings() {
   if (!SIZE_PRESETS[value.smartSize]) value.smartSize = DEFAULTS.smartSize;
   if (!/^\d+x\d+$/.test(String(value.fixedSize || ''))) value.fixedSize = DEFAULTS.fixedSize;
   value.enabled = Boolean(value.enabled);
+  value.orbVisible = value.orbVisible !== false;
   return value;
 }
 
 function save() {
   saveSettingsDebounced();
   renderControls();
+}
+
+function applyOrbVisibility() {
+  if (!orb) return;
+  const visible = settings().orbVisible !== false;
+  orb.style.setProperty('display', visible ? 'grid' : 'none', 'important');
+  orb.setAttribute('aria-hidden', visible ? 'false' : 'true');
+  orb.tabIndex = visible ? 0 : -1;
+  if (!visible) closeQuickSettingsUi();
+}
+
+function setOrbVisible(visible) {
+  settings().orbVisible = Boolean(visible);
+  applyOrbVisibility();
+  save();
+  return settings().orbVisible;
 }
 
 function setState(state, text) {
@@ -588,6 +605,9 @@ function createUi() {
   globalThis.IsoldeNaiCloseWorkbench = closeWorkbenchUi;
   globalThis.IsoldeNaiOpenQuickSettings = openQuickSettingsUi;
   globalThis.IsoldeNaiCloseQuickSettings = closeQuickSettingsUi;
+  globalThis.IsoldeNaiSetOrbVisible = setOrbVisible;
+  globalThis.IsoldeNaiGetOrbVisible = () => settings().orbVisible !== false;
+  applyOrbVisibility();
   renderControls();
 }
 
