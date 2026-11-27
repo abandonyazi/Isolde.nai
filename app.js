@@ -2048,14 +2048,38 @@ function mergeGalleryScenePrompt(scenePrompt,sceneCharacters){
   const visual=cleanJoin([before,extraText]);
   return [visual,textBlock].filter(Boolean).join('\n');
 }
+function normalizedCharacterTagForDedupe(value) {
+  return String(value || '')
+    .trim()
+    .toLowerCase()
+    .replace(/^[+-]?(?:\d+(?:\.\d+)?|\.\d+)::\s*/, '')
+    .replace(/\s*::$/, '')
+    .replace(/\s+/g, ' ');
+}
+function dedupeCharacterPromptTags(prompt, blockedPrompt='') {
+  const blocked=new Set(String(blockedPrompt||'').split(',').map(normalizedCharacterTagForDedupe).filter(Boolean));
+  const seen=new Set();
+  return String(prompt||'').split(',').map((part)=>part.trim()).filter(Boolean).filter((tag)=>{
+    const key=normalizedCharacterTagForDedupe(tag);
+    if(!key||blocked.has(key)||seen.has(key))return false;
+    seen.add(key);
+    return true;
+  }).join(', ');
+}
 function resolveAutomaticCharacters(value) {
   if(!Array.isArray(value))return[];
   return value.map((character)=>{
     if(!character||typeof character!=='object')return null;
     const anchorName=String(character.anchor||'').trim();
     const saved=anchorName?anchors.find((item)=>item.name===anchorName):null;
-    const savedPrompt=String(saved?.prompt||'').trim();
-    const currentPrompt=String(character.prompt||character.appearance||'').trim();
+    const savedPrompt=dedupeCharacterPromptTags(String(saved?.prompt||'').trim());
+    const rawCurrentPrompt=String(character.prompt||character.appearance||'').trim();
+    // Anchored characters get permanent appearance from the saved anchor exactly once.
+    // Director output may repeat appearance copied from the character card/persona;
+    // remove tags already covered by the anchor while preserving scene-only tags.
+    const currentPrompt=saved
+      ? dedupeCharacterPromptTags(rawCurrentPrompt,savedPrompt)
+      : dedupeCharacterPromptTags(rawCurrentPrompt);
     const prompt=cleanJoin([savedPrompt,currentPrompt]);
     if(!prompt)return null;
     return {name:String(character.name||anchorName||'').trim(),anchor:saved?saved.name:'',prompt};
