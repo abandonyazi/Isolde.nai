@@ -1676,3 +1676,37 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
     justify-self:start;
   }
 }
+
+
+/* v115: quick pin preset to top */
+.preset-cover-pin{
+  position:absolute;
+  z-index:3;
+  top:9px;
+  left:9px;
+  width:34px;
+  height:34px;
+  display:grid;
+  place-items:center;
+  padding:0;
+  border:1px solid rgba(255,255,255,.68);
+  border-radius:999px;
+  background:rgba(24,34,44,.58);
+  color:#fff;
+  box-shadow:0 5px 16px rgba(20,30,40,.18);
+  backdrop-filter:blur(9px);
+  -webkit-backdrop-filter:blur(9px);
+}
+.preset-cover-pin svg{
+  width:16px;
+  height:16px;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.9;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
+.preset-cover-pin:active{transform:scale(.94)}
+@media(max-width:430px){
+  .preset-cover-pin{top:7px;left:7px;width:32px;height:32px}
+}
