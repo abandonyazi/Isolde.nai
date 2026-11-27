@@ -1,5 +1,5 @@
-const CACHE = 'isolde-nai-v202611271850';
-const SHELL = ['./', './index.html', './app.css?v=67', './app.js?v=202611271845', './manifest.webmanifest', './icon.svg?v=16'];
+const CACHE = 'isolde-nai-v202611271910';
+const SHELL = ['./', './index.html', './app.css?v=68', './app.js?v=202611271905', './manifest.webmanifest', './icon.svg?v=16'];
 const DB_NAME = 'isolde-nai-gallery';
 const DB_VERSION = 4;
 
