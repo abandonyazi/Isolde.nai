@@ -4592,6 +4592,7 @@ els.naiInspectFile?.addEventListener('change',async()=>{
 els.addInspectedPresetBtn?.addEventListener('click',()=>addInspectedPreset());
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
 els.choosePresetCoverBtn?.addEventListener('click',()=>openPresetCoverPicker().catch(e=>{console.error(e);showToast('封面图库读取失败');}));
+els.presetCoverPickerDialog?.addEventListener('close',cleanupPresetCoverPickerPreviews);
 els.uploadPresetCoverBtn?.addEventListener('click',()=>els.presetCoverFile?.click());
 els.presetCoverFile?.addEventListener('change',()=>{
   const file=els.presetCoverFile.files?.[0];
