@@ -3394,7 +3394,7 @@ async function applyReferenceFeatures(naiBody,endpointRaw,key){
   if(useVibe){
     const asset=currentVibeAsset||await getLocalAsset('vibe');
     if(!vibeAssetUsable(asset))throw new Error('先添加或导入一个 Vibe');
-    const base=naiFetchBase(endpoint);
+    const base=naiFeatureBase(endpointRaw);
     const items=currentVibeStackItems(asset).filter(item=>item.enabled!==false).slice(0,VIBE_LIMIT);
     if(!items.length)throw new Error('当前没有启用的 Vibe');
     const encodings=[];
