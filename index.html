@@ -633,8 +633,10 @@
           <img id="presetCoverPreviewImage" alt="预设封面预览" />
           <span id="presetCoverPlaceholder">暂无封面</span>
         </div>
+        <input id="presetCoverFile" class="watermark-file-input" type="file" accept="image/*" />
         <div class="preset-cover-editor-actions">
           <button id="choosePresetCoverBtn" class="secondary-btn" type="button">从图库选封面</button>
+          <button id="uploadPresetCoverBtn" class="secondary-btn" type="button">从相册导入</button>
           <button id="removePresetCoverBtn" class="text-btn danger" type="button">移除封面</button>
         </div>
       </section>
@@ -751,6 +753,7 @@
           <img id="naiInspectPreview" alt="待解析 NAI 图片" />
           <div><strong id="naiInspectFileName">NAI 图片</strong><span id="naiInspectSource"></span><button id="replaceNaiInspectBtn" class="text-btn" type="button">换一张</button></div>
         </div>
+        <label class="inspect-cover-toggle"><input id="naiInspectUseAsCover" type="checkbox" /><span>将这张解析图片设为预设封面</span></label>
         <label class="field"><span>预设名称</span><input id="naiInspectPresetName" placeholder="从文件名自动生成，可修改" /></label>
         <label class="field"><span>画师串</span><textarea id="naiInspectArtist" rows="5"></textarea></label>
         <label class="field"><span>正面</span><textarea id="naiInspectPositive" rows="8"></textarea></label>
@@ -835,6 +838,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=202611271845"></script>
+  <script type="module" src="./app.js?v=202611271905"></script>
 </body>
 </html>
