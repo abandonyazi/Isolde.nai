@@ -1,10 +1,11 @@
-const VERSION = '0.9.90';
+const VERSION = '0.9.91';
 const MAIN_MODULE = './st-extension.js?ver=' + VERSION;
 const WORKBENCH_URL = new URL('./index.html?embed=1&ver=' + VERSION, import.meta.url).href;
 const WAND_ENTRY_ID = 'isolde-nai-wand-entry';
 const FALLBACK_HOST_ID = 'isolde-nai-bootstrap-host';
 const SETTINGS_ENTRY_ID = 'isolde-nai-settings-entry';
 const STATUS_ID = 'isolde-nai-bootstrap-status';
+const ORB_TOGGLE_ID = 'isolde-nai-orb-toggle';
 
 function closeWandMenu() {
   const menu = document.getElementById('extensionsMenu');
@@ -188,6 +189,15 @@ function setBootstrapStatus(text, tone = 'normal') {
   status.style.color = tone === 'error' ? '#d66' : '';
 }
 
+function syncOrbToggle() {
+  const toggle = document.getElementById(ORB_TOGGLE_ID);
+  if (!toggle) return;
+  const getter = globalThis.IsoldeNaiGetOrbVisible;
+  const ready = typeof getter === 'function';
+  toggle.disabled = !ready;
+  if (ready) toggle.checked = getter() !== false;
+}
+
 function ensureSettingsEntry() {
   if (document.getElementById(SETTINGS_ENTRY_ID)) return true;
   const root = document.getElementById('extensions_settings');
@@ -225,13 +235,41 @@ function ensureSettingsEntry() {
   openButton.style.width = '100%';
   openButton.addEventListener('click', openWorkbench);
 
+  const orbToggleRow = document.createElement('label');
+  orbToggleRow.style.display = 'flex';
+  orbToggleRow.style.alignItems = 'center';
+  orbToggleRow.style.justifyContent = 'space-between';
+  orbToggleRow.style.gap = '12px';
+  orbToggleRow.style.margin = '12px 0 2px';
+  orbToggleRow.style.cursor = 'pointer';
+
+  const orbToggleText = document.createElement('span');
+  orbToggleText.textContent = '显示悬浮球';
+
+  const orbToggle = document.createElement('input');
+  orbToggle.id = ORB_TOGGLE_ID;
+  orbToggle.type = 'checkbox';
+  orbToggle.checked = true;
+  orbToggle.disabled = true;
+  orbToggle.setAttribute('aria-label', '显示悬浮球');
+  orbToggle.addEventListener('change', () => {
+    const setter = globalThis.IsoldeNaiSetOrbVisible;
+    if (typeof setter !== 'function') {
+      orbToggle.checked = true;
+      return;
+    }
+    setter(orbToggle.checked);
+  });
+
+  orbToggleRow.append(orbToggleText, orbToggle);
+
   const hint = document.createElement('div');
-  hint.textContent = '悬浮球不可见时，可从这里或魔法棒菜单进入。';
+  hint.textContent = '关闭悬浮球后，仍可从这里或魔法棒菜单进入。';
   hint.style.marginTop = '8px';
   hint.style.fontSize = '.85em';
   hint.style.opacity = '.65';
 
-  body.append(status, openButton, hint);
+  body.append(status, openButton, orbToggleRow, hint);
   header.append(title, chevron);
   drawer.append(header, body);
   section.appendChild(drawer);
@@ -258,11 +296,13 @@ import(MAIN_MODULE)
           ? '主插件已加载 · 工作台可用'
           : '主插件已载入 · 正在初始化界面'
       );
+      syncOrbToggle();
     });
     window.setTimeout(() => {
       if (typeof globalThis.IsoldeNaiOpenWorkbench === 'function') {
         setBootstrapStatus('主插件已加载 · 工作台可用');
       }
+      syncOrbToggle();
     }, 300);
   })
   .catch((error) => {
