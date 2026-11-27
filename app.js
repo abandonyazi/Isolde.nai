@@ -1597,12 +1597,14 @@ async function loadPresetCoverForEditor(id){
   const asset=id?await getLocalAsset(presetCoverAssetKey(id)):null;
   setPresetCoverPreview(asset?.blob||null);
 }
-async function compressPresetCover(blob){
+async function rasterizePresetCoverJpeg(blob,{maxSide=900,quality=.86}={}){
   if(!(blob instanceof Blob))throw new Error('封面图片无效');
-  const url=URL.createObjectURL(blob);
+  const safeBlob=blob.type&&blob.type.startsWith('image/')
+    ? blob
+    : new Blob([blob],{type:'image/png'});
+  const url=URL.createObjectURL(safeBlob);
   try{
     const image=await loadCanvasImage(url);
-    const maxSide=900;
     const scale=Math.min(1,maxSide/Math.max(image.naturalWidth||1,image.naturalHeight||1));
     const width=Math.max(1,Math.round(image.naturalWidth*scale));
     const height=Math.max(1,Math.round(image.naturalHeight*scale));
@@ -1616,11 +1618,18 @@ async function compressPresetCover(blob){
     return await new Promise((resolve,reject)=>canvas.toBlob(
       result=>result?resolve(result):reject(new Error('封面压缩失败')),
       'image/jpeg',
-      .86
+      quality
     ));
   }finally{
     URL.revokeObjectURL(url);
   }
+}
+async function compressPresetCover(blob){
+  return await rasterizePresetCoverJpeg(blob,{maxSide:900,quality:.86});
+}
+async function presetCoverThumbnailDataUrl(blob){
+  const thumb=await rasterizePresetCoverJpeg(blob,{maxSide:360,quality:.74});
+  return await blobAsDataUrl(thumb);
 }
 async function openPresetCoverPicker(){
   const items=await getGallery();
@@ -1633,17 +1642,23 @@ async function openPresetCoverPicker(){
     els.presetCoverPickerDialog.showModal();
     return;
   }
+  els.presetCoverPickerDialog.showModal();
+
+  const usable=items.filter(item=>item?.blob instanceof Blob);
+  if(!usable.length){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='图库里暂时没有可用的图片。';
+    els.presetCoverPickerGrid.appendChild(note);
+    return;
+  }
+
   const fragment=document.createDocumentFragment();
-  for(const item of items){
-    if(!(item?.blob instanceof Blob))continue;
+  for(const item of usable){
     const button=document.createElement('button');
     button.type='button';
     button.className='preset-cover-picker-item';
     const img=document.createElement('img');
-    const url=URL.createObjectURL(item.blob);
-    img.src=url;
-    img.onload=()=>URL.revokeObjectURL(url);
-    img.onerror=()=>URL.revokeObjectURL(url);
     img.alt='图库封面候选';
     button.appendChild(img);
     button.addEventListener('click',()=>{
@@ -1652,9 +1667,18 @@ async function openPresetCoverPicker(){
       els.presetCoverPickerDialog.close();
     });
     fragment.appendChild(button);
+
+    presetCoverThumbnailDataUrl(item.blob)
+      .then(src=>{img.src=src;})
+      .catch(error=>{
+        console.warn('[Isolde.nai] preset cover thumbnail failed',error);
+        button.classList.add('preset-cover-picker-broken');
+        const label=document.createElement('span');
+        label.textContent='无法预览';
+        button.appendChild(label);
+      });
   }
   els.presetCoverPickerGrid.appendChild(fragment);
-  els.presetCoverPickerDialog.showModal();
 }
 async function renderPresetLibrary() {
   els.presetList.innerHTML = '';
