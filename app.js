@@ -2279,7 +2279,7 @@ async function generate({forceSeed=null,throwOnError=false,promptOverride=null,s
     let blob;
     const apiFormat=normalizeApiFormat(els.apiFormat.value);
     if(apiFormat==='nai'){
-      const base=naiFeatureBase(endpointRaw);
+      const base=naiFetchBase(endpoint);
       const resp=await fetch(`${base}/ai/generate-image`,{method:'POST',headers:{Authorization:`Bearer ${key}`,'Content-Type':'application/json',Accept:'application/zip,image/png'},body:JSON.stringify(naiBody)});
       blob=await parseUniversalImageResponse(resp);
     }else{
