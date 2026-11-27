@@ -1113,7 +1113,50 @@ function directorSceneSummary(ref, index) {
   return (index + 1) + '. ' + (names ? '[' + names + '] ' : '') + prompt;
 }
 
-async function planScenes(messageId, force, maxScenes = 1) {
+function repairDirectorPrompt(messageId, count, anchorEntries, acceptedRefs, rejectedScenes, paragraphCount, extraInstruction = '') {
+  const paragraphs = latestParagraphs(messageId);
+  const compactReply = paragraphs
+    .map((paragraph, index) => 'P' + (index + 1) + ': ' + String(paragraph || '').replace(/\s+/g, ' ').trim().slice(0, 220))
+    .join('\n')
+    .slice(0, 9000);
+  const accepted = acceptedRefs.map(directorSceneSummary).join('\n');
+  const rejected = (Array.isArray(rejectedScenes) ? rejectedScenes : [])
+    .map((scene, index) => directorSceneSummary(scene, index))
+    .join('\n');
+
+  return [
+    'You are repairing missing visual scene slots for an ongoing roleplay illustration pass.',
+    'The full director pass already ran. Do not re-read or reconstruct the entire conversation. Use only the compact latest reply and scene summaries below.',
+    '',
+    'Return JSON only with this exact structure:',
+    '{"generate":true,"reason":"repair","scenes":[{"prompt":"base NovelAI scene tags","after_paragraph":1,"orientation":"portrait","characters":[{"name":"story character name","anchor":"exact library name or empty","prompt":"scene-specific NovelAI tags"}]}]}',
+    '',
+    'Return exactly ' + count + ' replacement scene object' + (count === 1 ? '' : 's') + '.',
+    '- after_paragraph is 1-based and must point to the paragraph depicted.',
+    '- Write concise comma-separated English NovelAI visual tags.',
+    '- Keep scene prompt focused on environment, composition, camera, lighting, atmosphere, and shared relations.',
+    '- Keep character prompt focused on current clothing, expression, pose, action, and props.',
+    '- Reuse exact anchor names when a matching fixed-anchor name is available.',
+    '- Every replacement must differ materially from accepted scenes in at least two of: main action, framing/camera, staging/body position, setting.',
+    '- Do not merely swap synonyms.',
+    '',
+    'Available fixed-anchor names:',
+    formatAnchorLibrary(anchorEntries),
+    '',
+    'Rejected or missing source candidates:',
+    rejected || '(none)',
+    '',
+    'Already accepted scenes to avoid:',
+    accepted || '(none)',
+    '',
+    'Compact latest reply:',
+    compactReply || '(empty)',
+    '',
+    extraInstruction || '',
+  ].join('\n');
+}
+
+async function planScenes(messageId, force, maxScenes = 1, onAccepted = null) {
   setState('judging', force ? '正在补齐本周期配额…' : '正在判断这一幕…');
   let anchorEntries = [];
   try {
@@ -1132,25 +1175,43 @@ async function planScenes(messageId, force, maxScenes = 1) {
   const paragraphCount = latestParagraphs(messageId).length;
   const priorScenes = recentCycleAcceptedScenes(messageId);
 
-  const ask = async (count, mustFill, extraInstruction = '') => {
-    const base = directorPrompt(messageId, mustFill, anchorEntries, sourceContext, count);
-    const quietPrompt = extraInstruction ? base + '\n\n' + extraInstruction : base;
+  const ask = async (count, mustFill) => {
+    const quietPrompt = directorPrompt(messageId, mustFill, anchorEntries, sourceContext, count);
     const raw = await generateQuietPrompt({ quietPrompt });
     return parseDirectorReply(raw, count, mustFill, paragraphCount);
+  };
+
+  const askRepair = async (count, acceptedRefs, rejectedScenes, extraInstruction = '') => {
+    const quietPrompt = repairDirectorPrompt(
+      messageId,
+      count,
+      anchorEntries,
+      acceptedRefs,
+      rejectedScenes,
+      paragraphCount,
+      extraInstruction,
+    );
+    const raw = await generateQuietPrompt({ quietPrompt });
+    return parseDirectorReply(raw, count, true, paragraphCount);
+  };
+
+  const commitAccepted = async (batch) => {
+    const clean = Array.isArray(batch) ? batch.filter((scene) => scene && scene.prompt) : [];
+    if (!clean.length || typeof onAccepted !== 'function') return;
+    await onAccepted(clean);
   };
 
   const first = await ask(maxScenes, force);
   if (!first.generate) return first;
 
-  // In smart mode the director may voluntarily choose fewer than maxScenes.
-  // Once it chose N scenes, however, duplicate rejection should replace those
-  // rejected slots instead of silently shrinking the batch.
   const targetCount = force
     ? maxScenes
     : Math.min(maxScenes, Math.max(1, first.scenes.length));
 
   let check = acceptDistinctScenes(first.scenes.slice(0, targetCount), priorScenes, messageId);
   const scenes = [...check.accepted];
+  let rejectedScenes = check.rejected.map((item) => item.scene);
+  let repairError = '';
 
   if (check.rejected.length) {
     console.info('[Isolde.nai] duplicate scene candidates rejected', check.rejected.map((item) => ({
@@ -1159,31 +1220,38 @@ async function planScenes(messageId, force, maxScenes = 1) {
     })));
   }
 
-  // Replace only rejected/missing slots. Accepted scenes stay untouched.
-  // Two batch repair passes are enough for normal cases without creating an
-  // unbounded director loop.
+  // Persist valid first-pass slots immediately. Slow repair calls must never
+  // erase already accepted placeholders.
+  await commitAccepted(check.accepted);
+
+  // Use a compact repair prompt instead of resending the full director context.
   for (let attempt = 0; attempt < 2 && scenes.length < targetCount; attempt++) {
     const missing = targetCount - scenes.length;
     const acceptedRefs = [
       ...priorScenes,
       ...scenes.map((scene) => ({ messageId, scene })),
     ];
-    const avoid = acceptedRefs.map(directorSceneSummary).join('\n');
-    const repair = await ask(
-      missing,
-      true,
-      [
-        'Some scene candidates were rejected because they were visually too similar to scenes already accepted in this image cycle.',
-        'Return exactly ' + missing + ' replacement scene object' + (missing === 1 ? '' : 's') + '.',
-        'Each replacement must differ materially in at least two of these dimensions: main action, framing/camera, staging/body position, or setting.',
-        'Do not merely swap synonyms such as hugging/embracing or close-up/face focus.',
-        'Avoid these accepted scenes:',
-        avoid || '(none)',
-      ].join('\n'),
-    );
+
+    let repair;
+    try {
+      repair = await askRepair(
+        missing,
+        acceptedRefs,
+        rejectedScenes,
+        'Fill only the missing slots. Keep the response compact.',
+      );
+    } catch (error) {
+      repairError = (error && error.message) || 'replacement request failed';
+      console.warn('[Isolde.nai] compact scene repair failed; keeping accepted slots', error);
+      break;
+    }
 
     check = acceptDistinctScenes(repair.scenes.slice(0, missing), acceptedRefs, messageId);
-    scenes.push(...check.accepted);
+    rejectedScenes = check.rejected.map((item) => item.scene);
+    if (check.accepted.length) {
+      scenes.push(...check.accepted);
+      await commitAccepted(check.accepted);
+    }
     if (check.rejected.length) {
       console.info('[Isolde.nai] duplicate replacement scenes rejected', check.rejected.map((item) => ({
         prompt: item.scene.prompt,
@@ -1192,47 +1260,61 @@ async function planScenes(messageId, force, maxScenes = 1) {
     }
   }
 
-  // Hard quota cycles must not settle with duplicates or missing images.
-  // Repair one slot at a time as a final fallback.
+  // Hard quota still tries a couple of one-slot repairs, but a failed repair
+  // leaves quota debt for the next assistant turn instead of rolling back slots.
   if (force) {
-    while (scenes.length < targetCount) {
+    for (let attempt = 0; attempt < 2 && scenes.length < targetCount; attempt++) {
       const acceptedRefs = [
         ...priorScenes,
         ...scenes.map((scene) => ({ messageId, scene })),
       ];
-      const avoid = acceptedRefs.map(directorSceneSummary).join('\n');
-      const one = await ask(
-        1,
-        true,
-        [
-          'One hard-quota image slot is still missing because previous candidates were duplicates.',
-          'Return exactly one visually distinct scene.',
-          'Change the main action, camera/framing, staging/body position, or setting substantially.',
-          'Avoid these accepted scenes:',
-          avoid || '(none)',
-        ].join('\n'),
-      );
+
+      let one;
+      try {
+        one = await askRepair(
+          1,
+          acceptedRefs,
+          rejectedScenes,
+          'Return one clearly different replacement scene for one remaining hard-quota slot.',
+        );
+      } catch (error) {
+        repairError = (error && error.message) || 'single-slot repair failed';
+        console.warn('[Isolde.nai] single-slot repair failed; quota debt retained', error);
+        break;
+      }
+
       const oneCheck = acceptDistinctScenes(one.scenes.slice(0, 1), acceptedRefs, messageId);
+      rejectedScenes = oneCheck.rejected.map((item) => item.scene);
       if (oneCheck.accepted[0]) {
         scenes.push(oneCheck.accepted[0]);
-        continue;
+        await commitAccepted(oneCheck.accepted);
+      } else {
+        repairError = '导演反复给出重复场景';
+        break;
       }
-      throw new Error('导演反复给出重复场景，本周期不会结算，会在下一轮继续补。');
     }
   }
 
   if (!scenes.length) {
-    return { generate: false, reason: '候选场景与本周期已有画面重复，已过滤', scenes: [] };
+    return {
+      generate: false,
+      reason: repairError || '候选场景与本周期已有画面重复，已过滤',
+      scenes: [],
+      partial: false,
+      targetCount,
+      missingCount: targetCount,
+    };
   }
 
-  if (force && scenes.length < maxScenes) {
-    throw new Error('导演没有补齐设定的 ' + maxScenes + ' 张配额，本周期不会结算，会在下一轮继续补。');
-  }
-
+  const missingCount = Math.max(0, targetCount - scenes.length);
   return {
     generate: true,
-    reason: first.reason || (check.rejected.length ? 'deduplicated' : ''),
+    reason: first.reason || (missingCount ? 'partial' : (check.rejected.length ? 'deduplicated' : '')),
     scenes: scenes.slice(0, targetCount),
+    partial: missingCount > 0,
+    targetCount,
+    missingCount,
+    repairError,
   };
 }
 
@@ -2219,24 +2301,55 @@ async function runIllustration(messageId, force = false) {
   if (!remaining) return 0;
 
   running = true;
+  const addedTotal = [];
+
+  const commitBatch = async (batch) => {
+    const capacity = Math.max(0, remaining - addedTotal.length);
+    if (!capacity) return 0;
+    const added = await addPendingScenes(Number(messageId), batch.slice(0, capacity));
+    if (!added.length) return 0;
+
+    addedTotal.push(...added);
+    s.cycleSlotsUsed = clampInt(s.cycleSlotsUsed + added.length, 0, s.count, s.count);
+    save();
+    renderControls();
+
+    const stillMissing = Math.max(0, remaining - addedTotal.length);
+    setState(
+      'success',
+      stillMissing
+        ? '已标记 ' + addedTotal.length + ' 个候选 · 正在补剩余 ' + stillMissing + ' 个'
+        : '已标记 ' + addedTotal.length + ' 个生图候选',
+    );
+    return added.length;
+  };
 
   try {
-    const plan = await planScenes(messageId, force, remaining);
-    if (!plan.generate) {
+    const plan = await planScenes(messageId, force, remaining, commitBatch);
+
+    if (!plan.generate && !addedTotal.length) {
       setState('idle', plan.reason ? '这轮跳过 · ' + plan.reason : '这轮不需要出图');
       return 0;
     }
 
-    const added = await addPendingScenes(Number(messageId), plan.scenes.slice(0, remaining));
-    if (!added.length) return 0;
-
-    s.cycleSlotsUsed = clampInt(s.cycleSlotsUsed + added.length, 0, s.count, s.count);
-    save();
-    setState('success', '已标记 ' + added.length + ' 个生图候选');
-    setTimeout(() => setState('idle', '待机'), 1400);
-    return added.length;
+    if (plan.partial) {
+      setState(
+        'success',
+        '已保留 ' + addedTotal.length + ' 个候选 · 还欠 ' + plan.missingCount + ' 个，下轮继续补',
+      );
+      setTimeout(() => setState('idle', '待机'), 2200);
+    } else {
+      setState('success', '已标记 ' + addedTotal.length + ' 个生图候选');
+      setTimeout(() => setState('idle', '待机'), 1400);
+    }
+    return addedTotal.length;
   } catch (error) {
     console.error('[Isolde.nai]', error);
+    if (addedTotal.length) {
+      setState('success', '已保留 ' + addedTotal.length + ' 个候选 · 补位失败，下轮继续');
+      toast('补位请求失败，已经拿到的图框已保留。', 'warning');
+      return addedTotal.length;
+    }
     setState('error', (error && error.message) || '场景判断失败');
     toast((error && error.message) || '场景判断失败，请打开完整工作台检查设置。', 'error');
     return 0;
@@ -2244,6 +2357,7 @@ async function runIllustration(messageId, force = false) {
     running = false;
   }
 }
+
 async function onCharacterRendered(messageId, source) {
   queueDecorate(messageId);
   const s = settings();
