@@ -1641,3 +1641,38 @@ body.gallery-viewer-open{overflow:hidden!important;overscroll-behavior:none;}
   .preset-cover-card .preset-card-actions .small-btn{font-size:11px;padding:0 5px}
   .preset-cover-picker-grid{grid-template-columns:repeat(3,minmax(0,1fr));gap:7px}
 }
+
+
+/* v114: preset cover sources */
+.inspect-cover-toggle{
+  display:flex;
+  align-items:center;
+  gap:9px;
+  margin:2px 0 4px;
+  color:var(--text);
+  font-size:13px;
+  cursor:pointer;
+}
+.inspect-cover-toggle input{
+  width:18px;
+  height:18px;
+  margin:0;
+  accent-color:var(--accent);
+  flex:0 0 auto;
+}
+.inspect-cover-toggle span{
+  line-height:1.35;
+}
+.preset-cover-editor-actions{
+  align-items:center;
+}
+@media(max-width:430px){
+  .preset-cover-editor-actions{
+    display:grid;
+    grid-template-columns:1fr 1fr;
+  }
+  .preset-cover-editor-actions .text-btn{
+    grid-column:1 / -1;
+    justify-self:start;
+  }
+}
