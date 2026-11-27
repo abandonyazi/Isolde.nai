@@ -90,6 +90,8 @@ let naiInspectPreviewUrl = null;
 let currentNaiInspect = null;
 let presetCoverPreviewUrl = null;
 let presetCoverChange = { mode:'keep', blob:null };
+let presetCoverPickerObserver = null;
+const presetCoverPickerUrls = new Set();
 let zipWorkerReady = false;
 let zipWorkerInitPromise = null;
 let preparedGalleryZip = null;
@@ -1627,11 +1629,62 @@ async function rasterizePresetCoverJpeg(blob,{maxSide=900,quality=.86}={}){
 async function compressPresetCover(blob){
   return await rasterizePresetCoverJpeg(blob,{maxSide:900,quality:.86});
 }
-async function presetCoverThumbnailDataUrl(blob){
-  const thumb=await rasterizePresetCoverJpeg(blob,{maxSide:360,quality:.74});
-  return await blobAsDataUrl(thumb);
+function galleryBlobMime(bytes,fallback=''){
+  if(bytes.length>=8&&bytes[0]===0x89&&bytes[1]===0x50&&bytes[2]===0x4e&&bytes[3]===0x47&&bytes[4]===0x0d&&bytes[5]===0x0a&&bytes[6]===0x1a&&bytes[7]===0x0a)return 'image/png';
+  if(bytes.length>=3&&bytes[0]===0xff&&bytes[1]===0xd8&&bytes[2]===0xff)return 'image/jpeg';
+  if(bytes.length>=12&&String.fromCharCode(...bytes.slice(0,4))==='RIFF'&&String.fromCharCode(...bytes.slice(8,12))==='WEBP')return 'image/webp';
+  if(bytes.length>=6){
+    const gif=String.fromCharCode(...bytes.slice(0,6));
+    if(gif==='GIF87a'||gif==='GIF89a')return 'image/gif';
+  }
+  return String(fallback||'').startsWith('image/')?fallback:'image/png';
+}
+async function rewrapGalleryPreviewBlob(blob){
+  if(!(blob instanceof Blob))throw new Error('图库图片无效');
+  const buffer=await blob.arrayBuffer();
+  const bytes=new Uint8Array(buffer);
+  return new Blob([buffer],{type:galleryBlobMime(bytes,blob.type)});
+}
+function cleanupPresetCoverPickerPreviews(){
+  if(presetCoverPickerObserver){
+    presetCoverPickerObserver.disconnect();
+    presetCoverPickerObserver=null;
+  }
+  for(const url of presetCoverPickerUrls)URL.revokeObjectURL(url);
+  presetCoverPickerUrls.clear();
+  els.presetCoverPickerGrid?.querySelectorAll('img').forEach(img=>img.removeAttribute('src'));
+}
+async function loadPresetCoverPickerImage(img,button,blob){
+  if(img.dataset.coverLoaded==='1'||img.dataset.coverLoading==='1')return;
+  img.dataset.coverLoading='1';
+  try{
+    const normalized=await rewrapGalleryPreviewBlob(blob);
+    const url=URL.createObjectURL(normalized);
+    presetCoverPickerUrls.add(url);
+    img.dataset.coverLoaded='1';
+    img.src=url;
+    img.onerror=async()=>{
+      if(img.dataset.coverFallback==='1')return;
+      img.dataset.coverFallback='1';
+      try{
+        img.src=await blobAsDataUrl(normalized);
+      }catch(error){
+        console.warn('[Isolde.nai] preset cover preview fallback failed',error);
+        button.classList.add('preset-cover-picker-broken');
+      }
+    };
+  }catch(error){
+    console.warn('[Isolde.nai] preset cover preview failed',error);
+    button.classList.add('preset-cover-picker-broken');
+    const label=document.createElement('span');
+    label.textContent='无法预览';
+    button.appendChild(label);
+  }finally{
+    delete img.dataset.coverLoading;
+  }
 }
 async function openPresetCoverPicker(){
+  cleanupPresetCoverPickerPreviews();
   const items=await getGallery();
   els.presetCoverPickerGrid.innerHTML='';
   if(!items.length){
@@ -1642,7 +1695,6 @@ async function openPresetCoverPicker(){
     els.presetCoverPickerDialog.showModal();
     return;
   }
-  els.presetCoverPickerDialog.showModal();
 
   const usable=items.filter(item=>item?.blob instanceof Blob);
   if(!usable.length){
@@ -1650,16 +1702,19 @@ async function openPresetCoverPicker(){
     note.className='empty-note';
     note.textContent='图库里暂时没有可用的图片。';
     els.presetCoverPickerGrid.appendChild(note);
+    els.presetCoverPickerDialog.showModal();
     return;
   }
 
   const fragment=document.createDocumentFragment();
+  const pending=[];
   for(const item of usable){
     const button=document.createElement('button');
     button.type='button';
     button.className='preset-cover-picker-item';
     const img=document.createElement('img');
     img.alt='图库封面候选';
+    img.loading='lazy';
     button.appendChild(img);
     button.addEventListener('click',()=>{
       presetCoverChange={mode:'set',blob:item.blob};
@@ -1667,18 +1722,25 @@ async function openPresetCoverPicker(){
       els.presetCoverPickerDialog.close();
     });
     fragment.appendChild(button);
-
-    presetCoverThumbnailDataUrl(item.blob)
-      .then(src=>{img.src=src;})
-      .catch(error=>{
-        console.warn('[Isolde.nai] preset cover thumbnail failed',error);
-        button.classList.add('preset-cover-picker-broken');
-        const label=document.createElement('span');
-        label.textContent='无法预览';
-        button.appendChild(label);
-      });
+    pending.push({button,img,blob:item.blob});
   }
   els.presetCoverPickerGrid.appendChild(fragment);
+  els.presetCoverPickerDialog.showModal();
+
+  if('IntersectionObserver' in window){
+    presetCoverPickerObserver=new IntersectionObserver((entries)=>{
+      for(const entry of entries){
+        if(!entry.isIntersecting)continue;
+        const row=pending.find(item=>item.button===entry.target);
+        if(!row)continue;
+        presetCoverPickerObserver?.unobserve(row.button);
+        loadPresetCoverPickerImage(row.img,row.button,row.blob);
+      }
+    },{root:els.presetCoverPickerDialog,rootMargin:'180px 0px',threshold:.01});
+    pending.forEach(item=>presetCoverPickerObserver.observe(item.button));
+  }else{
+    pending.slice(0,12).forEach(item=>loadPresetCoverPickerImage(item.img,item.button,item.blob));
+  }
 }
 async function renderPresetLibrary() {
   els.presetList.innerHTML = '';
