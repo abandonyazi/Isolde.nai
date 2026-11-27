@@ -46,7 +46,7 @@
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icon.svg?v=16" />
   <link rel="apple-touch-icon" href="./icon.svg?v=16" />
-  <link rel="stylesheet" href="./app.css?v=66" />
+  <link rel="stylesheet" href="./app.css?v=67" />
   <title>Isolde NAI</title>
 </head>
 <body>
@@ -628,6 +628,16 @@
         <button class="icon-btn" type="button" data-close="presetDialog">×</button>
       </div>
       <input id="presetId" type="hidden" />
+      <section class="preset-cover-editor">
+        <div id="presetCoverPreview" class="preset-cover-preview is-empty">
+          <img id="presetCoverPreviewImage" alt="预设封面预览" />
+          <span id="presetCoverPlaceholder">暂无封面</span>
+        </div>
+        <div class="preset-cover-editor-actions">
+          <button id="choosePresetCoverBtn" class="secondary-btn" type="button">从图库选封面</button>
+          <button id="removePresetCoverBtn" class="text-btn danger" type="button">移除封面</button>
+        </div>
+      </section>
       <label class="field">
         <span>预设名称</span>
         <input id="presetName" required placeholder="例如：透明水彩 / 西幻 CG" />
@@ -690,6 +700,17 @@
         <button id="savePresetBtn" class="primary-btn" type="button">保存预设</button>
       </div>
     </form>
+  </dialog>
+
+  <dialog id="presetCoverPickerDialog" class="modal">
+    <div class="modal-panel preset-cover-picker-panel">
+      <div class="modal-head">
+        <h2>选择预设封面</h2>
+        <button class="icon-btn" type="button" data-close="presetCoverPickerDialog">×</button>
+      </div>
+      <p class="subtle">从当前设备图库选择一张图片。保存预设时会复制为轻量封面。</p>
+      <div id="presetCoverPickerGrid" class="preset-cover-picker-grid"></div>
+    </div>
   </dialog>
 
   <dialog id="defaultPromptDialog" class="modal">
@@ -814,6 +835,6 @@
   </div>
 
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script type="module" src="./app.js?v=202611271159"></script>
+  <script type="module" src="./app.js?v=202611271845"></script>
 </body>
 </html>
