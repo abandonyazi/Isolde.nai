@@ -12,7 +12,7 @@ import { deleteMediaFromServer } from '../../../chats.js';
 import { MEDIA_DISPLAY, MEDIA_TYPE, SCROLL_BEHAVIOR } from '../../../constants.js';
 
 const EXTENSION_KEY = 'isoldeNai';
-const EXTENSION_ASSET_VERSION = '0.9.69';
+const EXTENSION_ASSET_VERSION = '0.9.90';
 const UI_HOST_ID = 'isolde-nai-ui-host';
 const ORB_POS_KEY = 'isolde.nai.orb.pos.v1';
 const ORB_SIZE = 48;
