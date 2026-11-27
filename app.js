@@ -32,7 +32,7 @@ const els = {
   insertAnchorPromptsBtn: $('insertAnchorPromptsBtn'), insertAnchorMenu: $('insertAnchorMenu'),
   generateBtn: $('generateBtn'), generateLabel: $('generateLabel'), generateSpinner: $('generateSpinner'),
   emptyResult: $('emptyResult'), resultWrap: $('resultWrap'), resultImage: $('resultImage'), deleteResultBtn: $('deleteResultBtn'), saveLink: $('saveLink'), saveWatermarkedBtn: $('saveWatermarkedBtn'), regenBtn: $('regenBtn'), newSeedBtn: $('newSeedBtn'),
-  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), sortPresetsBtn: $('sortPresetsBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'),
+  presetList: $('presetList'), addPresetBtn: $('addPresetBtn'), sortPresetsBtn: $('sortPresetsBtn'), defaultPromptBtn: $('defaultPromptBtn'), inspectNaiBtn: $('inspectNaiBtn'), importChatu8Btn: $('importChatu8Btn'), savePresetBtn: $('savePresetBtn'), presetDialog: $('presetDialog'), presetForm: $('presetForm'), presetDialogTitle: $('presetDialogTitle'), presetId: $('presetId'), presetName: $('presetName'), presetArtist: $('presetArtist'), presetPositive: $('presetPositive'), presetNegative: $('presetNegative'), presetModel: $('presetModel'), presetSampler: $('presetSampler'), presetSteps: $('presetSteps'), presetCfg: $('presetCfg'), presetGuidanceRescale: $('presetGuidanceRescale'), presetCoverPreview: $('presetCoverPreview'), presetCoverPreviewImage: $('presetCoverPreviewImage'), presetCoverPlaceholder: $('presetCoverPlaceholder'), choosePresetCoverBtn: $('choosePresetCoverBtn'), removePresetCoverBtn: $('removePresetCoverBtn'), presetCoverPickerDialog: $('presetCoverPickerDialog'), presetCoverPickerGrid: $('presetCoverPickerGrid'),
   defaultPromptDialog: $('defaultPromptDialog'), defaultPromptPositive: $('defaultPromptPositive'), defaultPromptNegative: $('defaultPromptNegative'), saveDefaultPromptBtn: $('saveDefaultPromptBtn'),
   naiInspectDialog: $('naiInspectDialog'), naiInspectFile: $('naiInspectFile'), chooseNaiInspectBtn: $('chooseNaiInspectBtn'), replaceNaiInspectBtn: $('replaceNaiInspectBtn'), naiInspectEmpty: $('naiInspectEmpty'), naiInspectResult: $('naiInspectResult'), naiInspectPreview: $('naiInspectPreview'), naiInspectFileName: $('naiInspectFileName'), naiInspectSource: $('naiInspectSource'), naiInspectPresetName: $('naiInspectPresetName'), naiInspectArtist: $('naiInspectArtist'), naiInspectPositive: $('naiInspectPositive'), naiInspectNegative: $('naiInspectNegative'), naiInspectParams: $('naiInspectParams'), addInspectedPresetBtn: $('addInspectedPresetBtn'),
   anchorList: $('anchorList'), addAnchorBtn: $('addAnchorBtn'), sortAnchorsBtn: $('sortAnchorsBtn'), addOutfitBtn: $('addOutfitBtn'), saveAnchorBtn: $('saveAnchorBtn'), anchorDialog: $('anchorDialog'), anchorForm: $('anchorForm'), anchorDialogTitle: $('anchorDialogTitle'), anchorId: $('anchorId'), anchorName: $('anchorName'), anchorPrompt: $('anchorPrompt'), anchorOutfitList: $('anchorOutfitList'),
@@ -88,6 +88,8 @@ let referencePreviewUrl = null;
 let vibePreviewUrl = null;
 let naiInspectPreviewUrl = null;
 let currentNaiInspect = null;
+let presetCoverPreviewUrl = null;
+let presetCoverChange = { mode:'keep', blob:null };
 let zipWorkerReady = false;
 let zipWorkerInitPromise = null;
 let preparedGalleryZip = null;
@@ -1578,22 +1580,139 @@ function inspectPresetGeneration(params){
     cfgRescale:params.cfgRescale
   });
 }
-function renderPresetLibrary() {
-  els.presetList.innerHTML = '';
-  if (sortMode === 'presets') { renderInlineSort(els.presetList,'presets'); return; }
-  for (const p of presets) {
-    const card=document.createElement('article'); card.className='library-card';
-    const title=document.createElement('div'); title.className='library-title';
-    const h=document.createElement('h3'); h.textContent=p.name; title.appendChild(h);
-    card.appendChild(title);
-    const actions=document.createElement('div'); actions.className='card-actions preset-card-actions';
-    actions.appendChild(makeButton('编辑','small-btn',()=>openPresetEditor(p)));
-    actions.appendChild(makeButton('设为当前','small-btn',()=>selectPromptPreset(p.id,{goWorkbench:true})));
-    if (presets.length>1) actions.appendChild(makeButton('删除','small-btn danger',()=>deletePreset(p.id)));
-    card.appendChild(actions); bindLongPressSort(card,'presets'); els.presetList.appendChild(card);
+function presetCoverAssetKey(id){ return 'preset-cover:'+String(id||''); }
+function setPresetCoverPreview(blob){
+  if(presetCoverPreviewUrl){URL.revokeObjectURL(presetCoverPreviewUrl);presetCoverPreviewUrl=null;}
+  const has=blob instanceof Blob;
+  els.presetCoverPreview?.classList.toggle('is-empty',!has);
+  if(els.removePresetCoverBtn)els.removePresetCoverBtn.disabled=!has&&presetCoverChange.mode!=='remove';
+  if(has&&els.presetCoverPreviewImage){
+    presetCoverPreviewUrl=URL.createObjectURL(blob);
+    els.presetCoverPreviewImage.src=presetCoverPreviewUrl;
+  }else if(els.presetCoverPreviewImage){
+    els.presetCoverPreviewImage.removeAttribute('src');
   }
 }
-function openPresetEditor(p=null) {
+async function loadPresetCoverForEditor(id){
+  const asset=id?await getLocalAsset(presetCoverAssetKey(id)):null;
+  setPresetCoverPreview(asset?.blob||null);
+}
+async function compressPresetCover(blob){
+  if(!(blob instanceof Blob))throw new Error('封面图片无效');
+  const url=URL.createObjectURL(blob);
+  try{
+    const image=await loadCanvasImage(url);
+    const maxSide=900;
+    const scale=Math.min(1,maxSide/Math.max(image.naturalWidth||1,image.naturalHeight||1));
+    const width=Math.max(1,Math.round(image.naturalWidth*scale));
+    const height=Math.max(1,Math.round(image.naturalHeight*scale));
+    const canvas=document.createElement('canvas');
+    canvas.width=width;canvas.height=height;
+    const ctx=canvas.getContext('2d');
+    if(!ctx)throw new Error('浏览器无法处理封面');
+    ctx.drawImage(image,0,0,width,height);
+    return await new Promise((resolve,reject)=>canvas.toBlob(
+      result=>result?resolve(result):reject(new Error('封面压缩失败')),
+      'image/jpeg',
+      .86
+    ));
+  }finally{
+    URL.revokeObjectURL(url);
+  }
+}
+async function openPresetCoverPicker(){
+  const items=await getGallery();
+  els.presetCoverPickerGrid.innerHTML='';
+  if(!items.length){
+    const note=document.createElement('div');
+    note.className='empty-note';
+    note.textContent='图库还是空的，先生成一张图再来选封面。';
+    els.presetCoverPickerGrid.appendChild(note);
+    els.presetCoverPickerDialog.showModal();
+    return;
+  }
+  const fragment=document.createDocumentFragment();
+  for(const item of items){
+    if(!(item?.blob instanceof Blob))continue;
+    const button=document.createElement('button');
+    button.type='button';
+    button.className='preset-cover-picker-item';
+    const img=document.createElement('img');
+    const url=URL.createObjectURL(item.blob);
+    img.src=url;
+    img.onload=()=>URL.revokeObjectURL(url);
+    img.onerror=()=>URL.revokeObjectURL(url);
+    img.alt='图库封面候选';
+    button.appendChild(img);
+    button.addEventListener('click',()=>{
+      presetCoverChange={mode:'set',blob:item.blob};
+      setPresetCoverPreview(item.blob);
+      els.presetCoverPickerDialog.close();
+    });
+    fragment.appendChild(button);
+  }
+  els.presetCoverPickerGrid.appendChild(fragment);
+  els.presetCoverPickerDialog.showModal();
+}
+async function renderPresetLibrary() {
+  els.presetList.innerHTML = '';
+  els.presetList.classList.toggle('preset-sort-mode',sortMode==='presets');
+  if (sortMode === 'presets') { renderInlineSort(els.presetList,'presets'); return; }
+
+  const coverAssets=await listLocalAssets('preset-cover:').catch(()=>[]);
+  const coverMap=new Map(coverAssets.map(item=>[String(item.key||''),item]));
+
+  for (const p of presets) {
+    const card=document.createElement('article');
+    card.className='library-card preset-cover-card';
+
+    const media=document.createElement('div');
+    media.className='preset-cover-media';
+
+    const cover=coverMap.get(presetCoverAssetKey(p.id));
+    if(cover?.blob instanceof Blob){
+      const img=document.createElement('img');
+      const url=URL.createObjectURL(cover.blob);
+      img.src=url;
+      img.onload=()=>URL.revokeObjectURL(url);
+      img.onerror=()=>URL.revokeObjectURL(url);
+      img.alt=p.name+' 封面';
+      media.appendChild(img);
+    }else{
+      const placeholder=document.createElement('div');
+      placeholder.className='preset-cover-placeholder';
+      placeholder.textContent='暂无封面';
+      media.appendChild(placeholder);
+    }
+
+    const name=document.createElement('h3');
+    name.className='preset-cover-name';
+    name.textContent=p.name;
+    media.appendChild(name);
+
+    const trash=document.createElement('button');
+    trash.type='button';
+    trash.className='preset-cover-trash';
+    trash.title='删除预设';
+    trash.setAttribute('aria-label','删除预设 '+p.name);
+    trash.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7h16M9 7V4h6v3M7 7l1 13h8l1-13M10 11v5M14 11v5"/></svg>';
+    trash.disabled=presets.length<=1;
+    trash.addEventListener('pointerdown',event=>event.stopPropagation());
+    trash.addEventListener('click',event=>{event.stopPropagation();deletePreset(p.id);});
+    media.appendChild(trash);
+
+    const actions=document.createElement('div');
+    actions.className='card-actions preset-card-actions';
+    actions.addEventListener('pointerdown',event=>event.stopPropagation());
+    actions.appendChild(makeButton('编辑','small-btn',()=>openPresetEditor(p)));
+    actions.appendChild(makeButton('设为当前','small-btn',()=>selectPromptPreset(p.id,{goWorkbench:true})));
+
+    card.append(media,actions);
+    bindLongPressSort(card,'presets');
+    els.presetList.appendChild(card);
+  }
+}
+async function openPresetEditor(p=null) {
   els.presetDialogTitle.textContent = p ? '编辑预设' : '新增预设';
   els.presetId.value = p?.id || '';
   els.presetName.value = p?.name || '';
@@ -1601,12 +1720,16 @@ function openPresetEditor(p=null) {
   els.presetPositive.value = p?.positive || '';
   els.presetNegative.value = p?.negative || '';
   fillPresetGenerationEditor(p);
+  presetCoverChange={mode:'keep',blob:null};
+  setPresetCoverPreview(null);
   els.presetDialog.showModal();
+  if(p?.id)await loadPresetCoverForEditor(p.id);
 }
-function deletePreset(id) {
+async function deletePreset(id) {
   const p=presets.find(x=>x.id===id);
   if (!p || !confirm(`删除预设「${p.name}」？`)) return;
   presets=presets.filter(x=>x.id!==id); saveJson(PRESETS_KEY,presets);
+  await removeLocalAsset(presetCoverAssetKey(id)).catch(()=>{});
   if (settings.presetId===id) settings.presetId=presets[0]?.id || '';
   renderPresetSelect(); renderPresetLibrary(); updateAssembly();
 }
@@ -4361,16 +4484,28 @@ els.naiInspectFile?.addEventListener('change',async()=>{
 });
 els.addInspectedPresetBtn?.addEventListener('click',addInspectedPreset);
 els.addPresetBtn.addEventListener('click',()=>openPresetEditor());
+els.choosePresetCoverBtn?.addEventListener('click',()=>openPresetCoverPicker().catch(e=>{console.error(e);showToast('封面图库读取失败');}));
+els.removePresetCoverBtn?.addEventListener('click',()=>{
+  presetCoverChange={mode:'remove',blob:null};
+  setPresetCoverPreview(null);
+});
 els.sortPresetsBtn?.addEventListener('click',()=>enterSortMode('presets'));
 els.defaultPromptBtn?.addEventListener('click',openDefaultPromptEditor);
 els.saveDefaultPromptBtn?.addEventListener('click',saveDefaultPromptEditor);
-els.savePresetBtn.addEventListener('click',()=>{
+els.savePresetBtn.addEventListener('click',async()=>{
   const name=els.presetName.value.trim();if(!name){els.presetName.focus();return;}
   try{
     const id=els.presetId.value||uid('preset');
+    if(presetCoverChange.mode==='set'&&presetCoverChange.blob){
+      const coverBlob=await compressPresetCover(presetCoverChange.blob);
+      await putLocalAsset(presetCoverAssetKey(id),coverBlob,{name:name+'-cover.jpg',type:'image/jpeg'});
+    }else if(presetCoverChange.mode==='remove'){
+      await removeLocalAsset(presetCoverAssetKey(id)).catch(()=>{});
+    }
     const item={id,name,artist:els.presetArtist.value.trim(),positive:els.presetPositive.value.trim(),negative:els.presetNegative.value.trim(),generation:presetGenerationFromEditor(),updatedAt:Date.now()};
     const idx=presets.findIndex(p=>p.id===id);if(idx>=0)presets[idx]={...presets[idx],...item};else presets.unshift(item);
     saveJson(PRESETS_KEY,presets);settings.presetId=id;els.presetDialog.close();
+    presetCoverChange={mode:'keep',blob:null};
     renderPresetSelect();selectPromptPreset(id);renderPresetLibrary();showToast('预设已保存');
   }catch(e){console.error(e);showToast('预设保存失败');}
 });
