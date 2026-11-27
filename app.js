@@ -1742,6 +1742,18 @@ async function openPresetCoverPicker(){
     pending.slice(0,12).forEach(item=>loadPresetCoverPickerImage(item.img,item.button,item.blob));
   }
 }
+function pinPresetToTop(id){
+  const index=presets.findIndex(item=>item.id===id);
+  if(index<0)return;
+  if(index===0){showToast('已经在最前面了');return;}
+  const [item]=presets.splice(index,1);
+  presets.unshift(item);
+  saveJson(PRESETS_KEY,presets);
+  renderPresetSelect();
+  renderPresetLibrary();
+  updateAssembly();
+  showToast('已置顶「'+(item.name||'预设')+'」');
+}
 async function renderPresetLibrary() {
   els.presetList.innerHTML = '';
   els.presetList.classList.toggle('preset-sort-mode',sortMode==='presets');
@@ -1777,6 +1789,16 @@ async function renderPresetLibrary() {
     name.className='preset-cover-name';
     name.textContent=p.name;
     media.appendChild(name);
+
+    const pin=document.createElement('button');
+    pin.type='button';
+    pin.className='preset-cover-pin';
+    pin.title='置顶预设';
+    pin.setAttribute('aria-label','置顶预设 '+p.name);
+    pin.innerHTML='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 19V5M7 10l5-5 5 5M5 3h14"/></svg>';
+    pin.addEventListener('pointerdown',event=>event.stopPropagation());
+    pin.addEventListener('click',event=>{event.stopPropagation();pinPresetToTop(p.id);});
+    media.appendChild(pin);
 
     const trash=document.createElement('button');
     trash.type='button';
